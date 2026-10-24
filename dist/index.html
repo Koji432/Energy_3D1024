@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#edf1ed">
+  <meta name="description" content="懐中電灯を分解して、電源・スイッチ・LEDと回路図の対応を確かめる3D教材。">
+  <title>ひかりのしくみ — 懐中電灯と回路図</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2325473e'/%3E%3Cpath d='M18 4 9 18h7l-2 10 10-15h-7z' fill='%23e6c88a'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./style.css">
+  <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
+</head>
+<body>
+  <header class="header">
+    <a class="brand" href="./" aria-label="ひかりのしくみ ホーム"><span class="brand-icon" aria-hidden="true">↯</span><span>ひかりのしくみ<small>電気回路を、見てつなぐ。</small></span></a>
+    <nav class="mode-tabs" aria-label="表示する教材">
+      <button id="explore-tab" class="mode-tab active" aria-pressed="true"><span>01</span> 懐中電灯を分解</button>
+      <button id="circuit-tab" class="mode-tab" aria-pressed="false"><span>02</span> 回路図とくらべる</button>
+    </nav>
+    <span class="header-note">電気回路と回路図</span>
+  </header>
+  <main id="app">
+    <section class="intro">
+      <div><p class="eyebrow" id="eyebrow">01 / 懐中電灯を分解</p><h1 id="heading">光るしくみを、ひらいてみよう。</h1><p class="subtitle" id="subtitle">懐中電灯を分解して、中の部品を見てみましょう。</p></div>
+      <button id="next" class="text-button">回路図とくらべる <span aria-hidden="true">↗</span></button>
+    </section>
+    <section class="workspace" aria-label="懐中電灯の観察エリア">
+      <div class="scene-panel" id="scene-panel">
+        <div class="scene-topline"><span class="panel-kicker" id="scene-title">懐中電灯</span><span class="view-badge" id="view-badge"><i></i> 組み立てた状態</span></div>
+        <div id="viewport" role="img" aria-label="懐中電灯の3Dモデル。ドラッグで回転できます。下の操作ボタンで分解できます。" tabindex="0">
+          <div id="loading" class="loading">懐中電灯を準備しています…</div>
+          <div id="labels" aria-hidden="true"></div>
+        </div>
+        <div class="scene-bottomline"><span class="drag-hint"><span aria-hidden="true">↔</span> ドラッグで回転・ピンチで拡大</span><button id="reset-view" class="small-button" aria-label="視点を元に戻す">視点を戻す <span aria-hidden="true">↺</span></button></div>
+      </div>
+      <aside id="diagram-panel" class="diagram-panel" hidden>
+        <div class="scene-topline"><span class="panel-kicker">回路図</span><span class="diagram-caption">同じ部品、同じつながり</span></div>
+        <svg id="schematic" viewBox="0 0 440 390" role="group" aria-label="電池、スイッチ、抵抗、LEDが直列につながった回路図">
+          <defs><pattern id="grid" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".8" fill="#dce3dc"/></pattern><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10" fill="none" stroke="currentColor" stroke-width="1.8"/></marker></defs>
+          <rect width="440" height="390" fill="url(#grid)"/>
+          <g fill="none" stroke="#61736a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <path class="wire" d="M83 164V83H174 M232 83H281 M317 83H357V181 M357 229V307H83V224"/>
+            <g data-part="battery" role="button" tabindex="0" aria-label="電源：乾電池を選択" class="symbol">
+              <rect class="hitbox" x="45" y="149" width="78" height="88" rx="12"/>
+              <path d="M58 171H108 M69 181H97 M58 207H108 M69 217H97 M83 164V171 M83 181V207 M83 217V224"/>
+              <text x="119" y="176" class="polarity">＋</text><text x="118" y="223" class="polarity">−</text>
+              <text x="31" y="259" class="symbol-label">電源</text>
+            </g>
+            <g data-part="switch" role="button" tabindex="0" aria-label="スイッチを選択" class="symbol">
+              <rect class="hitbox" x="158" y="43" width="91" height="66" rx="12"/>
+              <circle cx="174" cy="83" r="3.5" fill="#f9faf6"/><circle cx="232" cy="83" r="3.5" fill="#f9faf6"/>
+              <path id="switch-arm" d="M178 81L225 58"/>
+              <text x="167" y="129" class="symbol-label">スイッチ</text>
+            </g>
+            <g data-part="led" role="button" tabindex="0" aria-label="負荷：LED基板を選択" class="symbol">
+              <rect x="269" y="57" width="135" height="213" fill="transparent" stroke="none"/>
+              <rect class="hitbox" x="269" y="57" width="63" height="52" rx="10"/>
+              <rect x="281" y="74" width="36" height="18" rx="1"/>
+              <text x="279" y="129" class="symbol-label secondary-label">抵抗</text>
+              <rect class="hitbox" x="330" y="165" width="67" height="79" rx="12"/>
+              <path id="led-triangle" d="M339 186H375L357 217Z"/><path d="M357 181V186 M340 218H374 M357 218V229"/>
+              <path d="M377 188L390 174 M382 201L395 187" marker-end="url(#arrow)"/>
+              <text x="336" y="263" class="symbol-label">LED</text>
+            </g>
+          </g>
+          <text x="220" y="360" text-anchor="middle" class="diagram-footnote">抵抗とLEDは、同じ基板に付いています。</text>
+        </svg>
+        <div class="switch-control"><span id="lamp-status"><i></i> LED 消灯</span><button id="power" class="toggle" role="switch" aria-checked="false" aria-label="回路のスイッチ"><span>OFF</span><i></i></button></div>
+      </aside>
+    </section>
+    <section id="motion-controls" class="motion-controls" aria-label="分解モーションの操作">
+      <button id="play" class="primary-button"><span id="play-icon" aria-hidden="true">▶</span><span id="play-text">分解してみる</span></button>
+      <div class="scrubber"><div class="scrubber-labels"><label for="progress">組み立て</label><span id="progress-label">0%</span><span>分解</span></div><input id="progress" type="range" min="0" max="100" value="0" step="0.1" aria-label="分解の進み具合" aria-valuetext="組み立てた状態"><div class="scrubber-track-labels"><span>外側をひらく</span><span>中の部品を見る</span></div></div>
+      <button id="assemble" class="secondary-button"><span aria-hidden="true">↶</span> 組み立て直す</button>
+    </section>
+    <section class="correspondence" aria-label="部品と役割の対応">
+      <div class="part-list">
+        <button class="part-chip" data-part="battery" aria-pressed="false"><span class="part-dot battery-dot"></span><span>乾電池</span><span class="part-arrow">↔</span><strong>電源</strong></button>
+        <button class="part-chip" data-part="switch" aria-pressed="false"><span class="part-dot switch-dot"></span><span>スイッチ</span><span class="part-arrow">↔</span><strong>スイッチ</strong></button>
+        <button class="part-chip" data-part="led" aria-pressed="false"><span class="part-dot led-dot"></span><span>LED</span><span class="part-arrow">↔</span><strong>負荷</strong></button>
+      </div>
+      <p id="part-description" aria-live="polite">部品を選ぶと、対応する場所が光ります。</p>
+    </section>
+    <footer><span id="model-note">しくみを見やすくした学習用モデルです。</span></footer>
+    <p id="announcement" class="sr-only" role="status"></p>
+  </main>
+  <noscript>この教材はJavaScriptを使います。ブラウザーのJavaScriptを有効にしてください。</noscript>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
