@@ -97,11 +97,23 @@ export function createCleaner() {
   const brushes = part('brushes', null, 'ブラシ', V(0, 1.38, 0), V(.65, 3.25, 1.45), .08, .6, V(0, .62, 0));
   roundedBox(brushes, 3.94, .14, 1.04, .08, black, 0, -.12, 0);
   for (const z of [-.245, .245]) {
-    const roller = cylinder(brushes, .185, 3.69, bristle, 0, .105, z, 40);
+    const rollerPivot = new THREE.Group();
+    rollerPivot.name = z < 0 ? 'cleaner-back-brush-rotor' : 'cleaner-front-brush-rotor';
+    rollerPivot.position.set(0, .105, z);
+    rollerPivot.userData.axis = 'x';
+    rollerPivot.userData.speed = z < 0 ? 8.5 : -8.5;
+    brushes.add(rollerPivot);
+    rotors.push(rollerPivot);
+    const roller = cylinder(rollerPivot, .185, 3.69, bristle, 0, 0, 0, 40);
     roller.rotation.z = Math.PI / 2;
     for (let i = 0; i < 38; i++) {
-      const rib = add(brushes, new THREE.TorusGeometry(.182, .014, 5, 28), i % 2 ? rubber : bristle, -1.8 + i * .097, .105, z);
+      const rib = add(rollerPivot, new THREE.TorusGeometry(.182, .014, 5, 28), i % 2 ? rubber : bristle, -1.8 + i * .097, 0, 0);
       rib.rotation.y = Math.PI / 2;
+    }
+    // Fine longitudinal bristle rows make the brush's rotation visible.
+    for (const a of [0, 1.9, 4.1]) {
+      const row = cylinder(rollerPivot, .014, 3.55, creamEdge, 0, Math.cos(a) * .188, Math.sin(a) * .188, 8);
+      row.rotation.z = Math.PI / 2;
     }
     for (const x of [-1.9, 1.9]) {
       const axle = cylinder(brushes, .12, .13, silver, x, .1, z, 24);
@@ -121,6 +133,7 @@ export function createCleaner() {
   const impeller = new THREE.Group();
   impeller.position.y = .34;
   impeller.userData.axis = 'y';
+  impeller.userData.speed = 24;
   motor.add(impeller); rotors.push(impeller);
   cylinder(impeller, .18, .14, silver);
   for (let i = 0; i < 9; i++) {
@@ -161,9 +174,16 @@ export function createCleaner() {
   const sw = part('switch', 'switch', 'スイッチ', V(1.73, -.77, 1.205), V(4.0, -1.25, 2.0), .43, .97, V(0, .65, .1));
   roundedBox(sw, .47, .59, .13, .075, greenEdge);
   roundedBox(sw, .34, .46, .12, .045, black, 0, .01, .09);
-  const rocker = roundedBox(sw, .27, .34, .075, .025, rubber, 0, .025, .17);
+  const rocker = roundedBox(sw, .27, .34, .075, .025, rubber.clone(), 0, .025, .17);
+  rocker.name = 'cleaner-power-rocker';
+  rocker.userData.powerControl = true;
   rocker.rotation.x = -.12;
-  add(sw, new THREE.BoxGeometry(.1, .018, .009), cream, 0, .095, .214);
+  const powerIndicator = add(rocker, new THREE.BoxGeometry(.1, .018, .009), cream.clone(), 0, .07, .044);
+  powerIndicator.name = 'cleaner-power-indicator';
+  const controlHitArea = add(sw, new THREE.BoxGeometry(.68, .8, .18), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }), 0, .025, .205);
+  controlHitArea.name = 'cleaner-power-hit-area';
+  controlHitArea.userData.powerControl = true;
+  controlHitArea.castShadow = controlHitArea.receiveShadow = false;
   tube(sw, [[-.12, -.16, -.09], [-.35, -.29, -.38], [-.6, -.23, -.65]], .026, red);
   tube(sw, [[.08, -.16, -.09], [-.21, -.38, -.42], [-.51, -.31, -.68]], .026, black);
 
@@ -182,5 +202,23 @@ export function createCleaner() {
       }
     });
   }
-  return { root, parts, rotors, focus: V(0, -.08, 0), floorY: -2.04, viewDirection: V(.65, .4, 1) };
+  let powered = false;
+  function setPowered(on) {
+    powered = Boolean(on);
+    rocker.rotation.x = powered ? .22 : -.18;
+    rocker.material.emissive.setHex(0x28623a);
+    rocker.material.emissiveIntensity = powered ? .2 : 0;
+    powerIndicator.material.emissive.setHex(0x2cba63);
+    powerIndicator.material.emissiveIntensity = powered ? .7 : 0;
+  }
+  function animate(_time, dt, on = powered) {
+    if (!on) return;
+    const step = Math.max(0, Math.min(dt, .1));
+    for (const rotor of rotors) {
+      const axis = rotor.userData.axis;
+      rotor.rotation[axis] = (rotor.rotation[axis] + step * rotor.userData.speed) % (Math.PI * 2);
+    }
+  }
+  setPowered(false);
+  return { root, parts, rotors, focus: V(0, -.08, 0), floorY: -2.04, viewDirection: V(.65, .4, 1), setPowered, animate };
 }

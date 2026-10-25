@@ -108,6 +108,7 @@ export function createFan() {
   const blades = part('blades', null, '羽根', new THREE.Vector3(0, 1.7, .2), new THREE.Vector3(-.95, 1.3, 2.7), .23, .8);
   const spinning = new THREE.Group();
   spinning.name = 'fan-rotor';
+  spinning.userData.axis = 'z';
   blades.add(spinning);
   rotors.push(spinning);
   const blade = new THREE.Shape();
@@ -156,10 +157,22 @@ export function createFan() {
   const controls = part('switch', 'switch', 'スイッチ', new THREE.Vector3(.15, -3.71, .73), new THREE.Vector3(2.8, -3.4, 1.7), .42, .94, new THREE.Vector3(.05, .5, .08));
   const panel = add(controls, new THREE.BoxGeometry(.99, .1, .4), pale);
   panel.rotation.x = -.13;
+  let powerButton;
   for (let i = 0; i < 4; i++) {
-    const button = add(controls, new THREE.BoxGeometry(.17, .12, .25), i === 0 ? blue : plastic, -.33 + i * .22, .09, 0);
+    const button = add(controls, new THREE.BoxGeometry(.17, .12, .25), i === 0 ? blue.clone() : plastic, -.33 + i * .22, .09, 0);
     button.rotation.x = -.13;
+    button.userData.part = 'switch';
+    button.userData.powerControl = true;
+    if (i === 0) {
+      button.name = 'fan-power-button';
+      powerButton = button;
+    }
   }
+  const controlHitArea = add(controls, new THREE.BoxGeometry(1.2, .42, .56), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }), 0, .13, .06);
+  controlHitArea.name = 'fan-power-hit-area';
+  controlHitArea.castShadow = controlHitArea.receiveShadow = false;
+  controlHitArea.userData.part = 'switch';
+  controlHitArea.userData.powerControl = true;
   tube(controls, [[-.22, -.03, -.15], [-.3, -.1, -.45], [-.25, -.1, -.7]], .027, dark, 12);
 
   const source = part('source', 'source', '電源プラグ', new THREE.Vector3(-.74, -3.94, -.5), new THREE.Vector3(-3.35, -3.4, .45), .46, .98, new THREE.Vector3(-.5, .45, .35));
@@ -171,5 +184,18 @@ export function createFan() {
     prong.rotation.y = -.15;
   }
 
-  return { root, parts, rotors, focus: new THREE.Vector3(0, -.1, 0) };
+  let powered = false;
+  function setPowered(on) {
+    powered = Boolean(on);
+    powerButton.position.y = powered ? .035 : .09;
+    powerButton.material.emissive.setHex(0x2cba63);
+    powerButton.material.emissiveIntensity = powered ? .4 : 0;
+  }
+  function animate(_time, dt, on = powered) {
+    if (!on) return;
+    const step = Math.max(0, Math.min(dt, .1));
+    spinning.rotation.z = (spinning.rotation.z - step * 10) % (Math.PI * 2);
+  }
+  setPowered(false);
+  return { root, parts, rotors, focus: new THREE.Vector3(0, -.1, 0), setPowered, animate };
 }

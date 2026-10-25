@@ -135,6 +135,39 @@ export function createDrone() {
   }
   box(lid, .83, .015, .02, materials.lower, 0, .278, -.91);
 
+  // A real, exposed control on the lid remains reachable before disassembly.
+  // The separate internal switch below is retained for the exploded view.
+  const powerIndicatorMaterial = materials.light.clone();
+  powerIndicatorMaterial.color.setHex(0x5d7968);
+  powerIndicatorMaterial.emissiveIntensity = .02;
+  const exposedPower = new THREE.Group();
+  exposedPower.position.set(.45, .312, -1.14);
+  lid.add(exposedPower);
+  cylinder(exposedPower, .208, .045, materials.lower);
+  const powerRing = new THREE.MeshStandardMaterial({
+    color: 0x6f7c74, emissive: 0x259b58, emissiveIntensity: 0,
+    roughness: .36, metalness: .12,
+  });
+  cylinder(exposedPower, .181, .049, powerRing, 0, .018, 0);
+  const powerCap = new THREE.Group();
+  exposedPower.add(powerCap);
+  const capMesh = cylinder(powerCap, .148, .042, materials.dark, 0, .04, 0);
+  capMesh.name = 'drone-power-button';
+  capMesh.userData.powerControl = true;
+  const powerArc = [];
+  for (let i = 0; i <= 24; i++) {
+    const angle = Math.PI * .22 + i * Math.PI * 1.56 / 24;
+    powerArc.push([Math.sin(angle) * .071, .063, Math.cos(angle) * .071]);
+  }
+  cable(powerCap, powerArc, materials.white, .009);
+  line(powerCap, [0, .064, .09], [0, .064, .012], .009, materials.white);
+  const indicator = cylinder(lid, .042, .018, powerIndicatorMaterial, .1, .308, -1.14);
+  indicator.name = 'drone-power-indicator';
+  exposedPower.traverse(object => {
+    if (object.isMesh) object.userData.part = 'switch';
+  });
+  indicator.userData.part = 'switch';
+
   // One rechargeable battery module. The large dark pack remains visibly
   // distinct from the green control board during disassembly.
   const battery = part('battery', 'source', '電源', [0, .17, -.52], [-.5, 3.05, -1.5], .24, .78, [-.05, .42, 0]);
@@ -230,6 +263,8 @@ export function createDrone() {
     const propPart = part(`propeller${index + 1}`, null, 'プロペラ', [x, .63, z], [x * 1.2, 3.45, z * 1.2], .02, .55, [0, .3, 0]);
     const spinning = new THREE.Group();
     spinning.rotation.y = (index % 2 ? .75 : -.4) + (z < 0 ? .35 : 0);
+    spinning.userData.axis = 'y';
+    spinning.userData.spinDirection = [1, -1, -1, 1][index];
     propPart.add(spinning);
     rotors.push(spinning);
     for (let side = 0; side < 2; side++) {
@@ -254,5 +289,21 @@ export function createDrone() {
       if (object.isMesh && entry.role) object.userData.part = entry.role;
     });
   }
-  return { root, parts, rotors, focus: new THREE.Vector3(0, .85, 0) };
+  let powered = false;
+  function setPowered(on) {
+    powered = Boolean(on);
+    powerRing.color.setHex(powered ? 0x4cbb7a : 0x6f7c74);
+    powerRing.emissiveIntensity = powered ? .85 : 0;
+    powerIndicatorMaterial.color.setHex(powered ? 0x75e2a3 : 0x5d7968);
+    powerIndicatorMaterial.emissiveIntensity = powered ? 1.5 : .02;
+    powerCap.position.y = powered ? -.012 : 0;
+  }
+  function animate(time, dt, active = powered) {
+    if (!powered || !active) return;
+    const step = Math.min(Math.max(dt, 0), .05) * 36;
+    for (const rotor of rotors) {
+      rotor.rotation.y = (rotor.rotation.y + step * rotor.userData.spinDirection) % (Math.PI * 2);
+    }
+  }
+  return { root, parts, rotors, focus: new THREE.Vector3(0, .85, 0), setPowered, animate };
 }

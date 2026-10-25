@@ -14,10 +14,10 @@ export function createFlashlight(){
  cyl(head.group,1.03,.86,mat.shell,-.05,.68,true);const reflect=mat.silver.clone();reflect.side=THREE.DoubleSide;cyl(head.group,.96,.75,reflect,-.1,.18,true);
  ring(head.group,1.01,.065,-.48,mat.dark);ring(head.group,.69,.05,.38,mat.dark);
  for(let i=0;i<4;i++)ring(head.group,.71+i*.07,.023,.3-i*.15,mat.dark);
- const lens=part('lens',null,[-2.75,0,0],[-6.25,.1,0],0,.34,'レンズ');cyl(lens.group,.96,.04,mat.glass);ring(lens.group,.98,.04,0,mat.silver);
+ const lens=part('lens',null,[-2.75,0,0],[-6.25,.1,0],0,.34,'レンズ');const lensDisc=cyl(lens.group,.96,.04,mat.glass);ring(lens.group,.98,.04,0,mat.silver);
  const led=part('led','led',[-1.78,0,0],[-2.75,.2,0],.33,.8,'LED',[0,1.3,0]);
  cyl(led.group,.52,.09,mat.pcb);ring(led.group,.46,.015,-.055,mat.gold);
- mesh(new THREE.BoxGeometry(.14,.35,.35),mat.white,led.group,[-.1,-.08,0]);mesh(new THREE.BoxGeometry(.045,.23,.23),mat.led,led.group,[-.195,-.08,0]);
+ mesh(new THREE.BoxGeometry(.14,.35,.35),mat.white,led.group,[-.1,-.08,0]);const ledChip=mesh(new THREE.BoxGeometry(.045,.23,.23),mat.led,led.group,[-.195,-.08,0]);
  const resistor=mesh(new THREE.CylinderGeometry(.07,.07,.34,20),mat.gold,led.group,[-.13,.3,0]);resistor.rotation.x=Math.PI/2;resistor.userData.part='resistor';
  for(const z of [-.08,.04,.09]){const band=ring(led.group,.072,.012,0,mat.black);band.position.set(-.13,.3,z);band.rotation.y=0;band.userData.part='resistor';}
  const source=part('source','source',[.25,0,0],[.05,.28,.1],.35,.92,'乾電池',[0,1,0]);
@@ -26,7 +26,14 @@ export function createFlashlight(){
  const plus=mesh(new THREE.BoxGeometry(.22,.045,.025),mat.white,source.group,[-.88,.08,.435]);mesh(new THREE.BoxGeometry(.045,.22,.025),mat.white,source.group,[-.88,.08,.435]);mesh(new THREE.BoxGeometry(.2,.045,.025),mat.white,source.group,[.98,.08,.445]);
  const cap=part('cap',null,[2.58,0,0],[5.9,.1,0],0,.36,'ふた');cyl(cap.group,.69,.4,mat.shell);for(let i=0;i<3;i++)ring(cap.group,.69,.02,-.12+i*.11,mat.dark);cyl(cap.group,.54,.04,mat.dark,.22);
  const spring=part('spring',null,[2.08,0,0],[4.2,.1,0],.08,.47,'ばね',[0,.9,0]);const pts=[];for(let i=0;i<=160;i++){const t=i/160;pts.push(new THREE.Vector3(-.3+t*.6,Math.cos(t*Math.PI*10)*.27,Math.sin(t*Math.PI*10)*.27));}mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),160,.026,8,false),mat.silver,spring.group);
- const sw=part('switch','switch',[-.8,.7,0],[1.6,2.15,0],.45,1,'スイッチ',[0,.75,0]);mesh(new THREE.BoxGeometry(.85,.16,.43),mat.black,sw.group);mesh(new THREE.BoxGeometry(.4,.16,.32),mat.shell,sw.group,[-.12,.15,0]);for(let i=0;i<3;i++)mesh(new THREE.BoxGeometry(.025,.02,.27),mat.silver,sw.group,[-.2+i*.08,.24,0]);
+ const sw=part('switch','switch',[-.8,.7,0],[1.6,2.15,0],.45,1,'スイッチ',[0,.75,0]);mesh(new THREE.BoxGeometry(.85,.16,.43),mat.black,sw.group);
+ const slider=new THREE.Group();sw.group.add(slider);const sliderMat=mat.shell.clone();mesh(new THREE.BoxGeometry(.4,.16,.32),sliderMat,slider,[-.12,.15,0]);for(let i=0;i<3;i++)mesh(new THREE.BoxGeometry(.025,.02,.27),mat.silver,slider,[-.2+i*.08,.24,0]);
+ const beam=new THREE.Mesh(new THREE.CylinderGeometry(1.55,.79,2.1,48,1,true),new THREE.MeshBasicMaterial({color:0xffe9ad,transparent:true,opacity:.13,depthWrite:false,side:THREE.DoubleSide}));beam.rotation.z=Math.PI/2;beam.position.set(-3.84,0,0);beam.userData.excludeFromFrame=true;beam.visible=false;beam.raycast=()=>{};root.add(beam);
+ const pixels=new Uint8Array(64*64*4);for(let y=0;y<64;y++)for(let x=0;x<64;x++){const r=Math.hypot(x-31.5,y-31.5)/31.5,i=(y*64+x)*4;pixels[i]=255;pixels[i+1]=238;pixels[i+2]=175;pixels[i+3]=Math.max(0,Math.round((1-r)**2*130));if(r>=1)pixels[i+3]=0;}
+ const halo=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.DataTexture(pixels,64,64),transparent:true,depthWrite:false}));halo.material.map.needsUpdate=true;halo.position.set(-2.8,0,0);halo.scale.set(2.8,2.8,1);halo.visible=false;halo.raycast=()=>{};root.add(halo);
+ const light=new THREE.PointLight(0xffedb2,0,6,2);light.position.set(-2.9,.15,0);root.add(light);
+ function setPowered(on){slider.position.x=on?.23:0;sliderMat.emissive.setHex(on?0x1d9a53:0);sliderMat.emissiveIntensity=on?.5:0;mat.led.emissive.setHex(0xffe49c);mat.led.emissiveIntensity=on?2:0;mat.glass.color.setHex(on?0xfff3cb:0xbadcf2);mat.glass.emissive.setHex(0xffefbc);mat.glass.emissiveIntensity=on?2:0;mat.glass.opacity=on?.94:.23;beam.visible=halo.visible=on;light.intensity=on?13:0;}
  for(const p of parts)if(p.role)p.group.traverse(o=>{if(o.isMesh&&!o.userData.part)o.userData.part=p.role;});
- return {root,parts,rotors:[],focus:new THREE.Vector3(0,0,0)};
+ setPowered(false);
+ return {root,parts,rotors:[],setPowered,focus:new THREE.Vector3(0,0,0)};
 }

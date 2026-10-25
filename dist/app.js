@@ -1,16 +1,17 @@
 import * as THREE from 'three';
 import {OrbitControls} from './vendor/OrbitControls.js';
-import {phase,animationStep,initialState,transition,devices,partNames} from './model.js';
+import {phase,animationStep,initialState,transition,devices,partNames,canOperate} from './model.js';
 import {createFlashlight} from './models/flashlight.js';
 import {createFan} from './models/fan.js';
 import {createCleaner} from './models/cleaner.js';
 import {createController} from './models/controller.js';
-import {circuitIcon,productIcon,deviceIcons,disassembleIcon,backIcon} from './icons.js';
+import {createVacuum} from './models/vacuum.js';
+import {circuitIcon,productIcon,deviceIcons,disassembleIcon,assembleIcon} from './icons.js';
 import {createDrone} from './models/drone.js';
 import {createCircuit,diagramMarkup} from './circuits.js';
 const $=id=>document.getElementById(id);
 for(const b of document.querySelectorAll('[data-device]'))b.innerHTML=deviceIcons[b.dataset.device];
-$('disassemble').innerHTML=disassembleIcon;$('back').innerHTML=backIcon;$('view-toggle').innerHTML=circuitIcon;
+$('disassemble').innerHTML=disassembleIcon;$('view-toggle').innerHTML=circuitIcon;
 let state=initialState(),manualView=false,highlighted=new Map();
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const viewport=$('viewport'),scene=new THREE.Scene();
@@ -28,7 +29,7 @@ scene.add(new THREE.HemisphereLight(0xffffff,0xa1b0c4,2.6));
 const key=new THREE.DirectionalLight(0xfff8ed,3.2);key.position.set(-6,12,10);key.castShadow=true;key.shadow.mapSize.set(2048,2048);Object.assign(key.shadow.camera,{left:-15,right:15,top:15,bottom:-15});key.shadow.normalBias=.04;scene.add(key);
 const fill=new THREE.DirectionalLight(0xd5e7ff,2);fill.position.set(7,4,-7);scene.add(fill);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(150,150),new THREE.ShadowMaterial({color:0x1d314b,opacity:.12}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
-const constructors={flashlight:createFlashlight,fan:createFan,cleaner:createCleaner,controller:createController,drone:createDrone},models={},circuits={};
+const constructors={flashlight:createFlashlight,fan:createFan,cleaner:createCleaner,vacuum:createVacuum,controller:createController,drone:createDrone},models={},circuits={};
 function ensureModel(id){if(!models[id]){models[id]=constructors[id]();for(const p of models[id].parts)p.group.traverse(o=>{if(o.isMesh&&!o.userData.part)o.userData.part=o.userData.role||p.role;});scene.add(models[id].root);}return models[id];}
 function ensureCircuit(id){if(!circuits[id]){circuits[id]=createCircuit(id);scene.add(circuits[id].root);}return circuits[id];}
 function activeModel(){return state.view==='circuit'?ensureCircuit(state.device):ensureModel(state.device);}
@@ -49,7 +50,7 @@ function frameModel(){
  let minW=Infinity,maxW=-Infinity,minH=Infinity,maxH=-Infinity;
  const corner=new THREE.Vector3();
  active.root.traverse(o=>{
-  if(!o.isMesh)return;
+  if(!o.isMesh||o.userData.excludeFromFrame||!o.visible)return;
   if(!o.geometry.boundingBox)o.geometry.computeBoundingBox();
   const box=o.geometry.boundingBox;
   for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z]){
@@ -88,11 +89,14 @@ function updateSelection(){
   const selected=el.dataset.part===state.selected;el.classList.toggle('selected',selected);if(el.tagName==='BUTTON')el.setAttribute('aria-pressed',String(selected));
  }
  for(const {part,el}of labelEntries)el.classList.toggle('selected',!!state.selected&&part.role===state.selected);
- if(!state.selected)return;
+ if(!state.selected||(state.view==='model'&&canOperate(state)))return;
  activeModel().root.traverse(o=>{if(o.isMesh&&o.userData.part===state.selected&&o.material?.isMeshStandardMaterial){const original=o.material,material=original.clone();material.emissive=new THREE.Color(0xb87400);material.emissiveIntensity=.35;highlighted.set(o,original);o.material=material;}});
 }
 function updatePower(){
- const powered=state.view==='circuit'&&state.power;
+ const powered=canOperate(state)&&state.power;
+ clearHighlights();
+ for(const [id,model]of Object.entries(models))model.setPowered?.(powered&&state.view==='model'&&id===state.device);
+ $('app').dataset.power=powered?'on':'off';
  document.body.classList.toggle('powered',powered);
  document.querySelectorAll('[data-part="switch"][role="switch"]').forEach(el=>el.setAttribute('aria-checked',String(powered)));
  document.querySelectorAll('.switch-arm').forEach(el=>el.setAttribute('d',powered?el.dataset.closed:el.dataset.open));
@@ -114,35 +118,38 @@ function syncUI(){
  $('view-toggle').innerHTML=state.view==='circuit'?productIcon:circuitIcon;
  $('view-toggle').setAttribute('aria-label',state.view==='circuit'?'電気製品を表示':'電気回路を表示');$('view-toggle').setAttribute('aria-pressed',String(state.view==='circuit'));
  $('diagram-panel').hidden=state.view!=='circuit';$('model-title').hidden=state.view!=='circuit';$('part-buttons').hidden=state.view!=='circuit';
- $('back').disabled=state.view==='model'&&state.progress===0&&state.direction===0;
- $('disassemble').disabled=state.view==='model'&&state.progress===1&&state.direction===0;
+ const assembling=state.view==='model'&&(state.direction>0||(state.direction===0&&state.progress>0));
+ $('disassemble').innerHTML=assembling?assembleIcon:disassembleIcon;$('disassemble').setAttribute('aria-label',assembling?'組み立て':'分解');
+ $('app').dataset.device=state.device;$('app').dataset.view=state.view;
  for(const b of document.querySelectorAll('[data-device]')){const active=b.dataset.device===state.device;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}
  viewport.setAttribute('aria-label',`${devices[state.device].name}の${state.view==='circuit'?'部品の回路':'3Dモデル'}`);
  $('schematic').setAttribute('aria-label',`${devices[state.device].name}の回路図`);
 }
 function act(action){
  const before=state;state=transition(state,action);
- if(action.type==='SELECT'){updateSelection();return;}
- if(action.type==='POWER'){updatePower();$('announcement').textContent=state.power?'オン':'オフ';return;}
+ if(action.type==='SELECT'){updateSelection();renderer.render(scene,camera);return;}
+ if(action.type==='POWER'){updatePower();renderer.render(scene,camera);$('announcement').textContent=state.power?'オン':'オフ';return;}
  clearHighlights();manualView=false;showActive();
  if(action.type==='DEVICE'||before.view!==state.view){rebuildLabels();if(state.view==='circuit')buildDiagram();}
- syncUI();updatePower();updateSelection();frameModel();
- $('announcement').textContent=action.type==='TOGGLE_VIEW'?(state.view==='circuit'?'部品の回路と回路図':'製品'):action.type==='DISASSEMBLE'?'分解':action.type==='BACK'?'戻る':devices[state.device].name;
+ syncUI();updatePower();updateSelection();frameModel();renderer.render(scene,camera);
+ $('announcement').textContent=action.type==='TOGGLE_VIEW'?(state.view==='circuit'?'部品の回路と回路図':'製品'):action.type==='DISASSEMBLE'?'分解':action.type==='ASSEMBLE'?'組み立て':devices[state.device].name;
 }
 for(const b of document.querySelectorAll('[data-device]'))b.addEventListener('click',()=>act({type:'DEVICE',device:b.dataset.device}));
-$('disassemble').addEventListener('click',()=>act({type:'DISASSEMBLE'}));$('back').addEventListener('click',()=>act({type:'BACK'}));$('view-toggle').addEventListener('click',()=>act({type:'TOGGLE_VIEW'}));
-function activatePart(role){act(role==='switch'&&state.view==='circuit'?{type:'POWER'}:{type:'SELECT',role});}
+$('disassemble').addEventListener('click',()=>act({type:state.view==='model'&&(state.direction>0||(state.direction===0&&state.progress>0))?'ASSEMBLE':'DISASSEMBLE'}));$('view-toggle').addEventListener('click',()=>act({type:'TOGGLE_VIEW'}));
+function activatePart(role){if(role==='switch'&&canOperate(state))act({type:'POWER'});else if(state.view==='circuit'||state.progress>0)act({type:'SELECT',role});}
 document.addEventListener('click',e=>{const el=e.target.closest('[data-part]');if(el)activatePart(el.dataset.part);});
 $('schematic').addEventListener('keydown',e=>{const el=e.target.closest('[data-part]');if(el&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(!e.repeat)activatePart(el.dataset.part);}});
 const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();let down=null;
-renderer.domElement.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY};});
+function hitAt(x,y){const rect=renderer.domElement.getBoundingClientRect();pointer.set((x-rect.left)/rect.width*2-1,-(y-rect.top)/rect.height*2+1);raycaster.setFromCamera(pointer,camera);return raycaster.intersectObject(activeModel().root,true)[0];}
+renderer.domElement.addEventListener('pointerdown',e=>{down=e.button===0&&e.isPrimary!==false?{x:e.clientX,y:e.clientY}:null;});
+renderer.domElement.addEventListener('pointercancel',()=>{down=null;});
 renderer.domElement.addEventListener('pointerup',e=>{
- if(!down||Math.hypot(e.clientX-down.x,e.clientY-down.y)>6)return;
- const rect=renderer.domElement.getBoundingClientRect();pointer.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1);raycaster.setFromCamera(pointer,camera);
- const hit=raycaster.intersectObject(activeModel().root,true)[0];if(hit?.object.userData.part)activatePart(hit.object.userData.part);
+ const start=down;down=null;if(!start||Math.hypot(e.clientX-start.x,e.clientY-start.y)>6)return;
+ const hit=hitAt(e.clientX,e.clientY);if(hit?.object.userData.part)activatePart(hit.object.userData.part);
 });
+renderer.domElement.addEventListener('pointermove',e=>{if(down)return;const hit=hitAt(e.clientX,e.clientY);renderer.domElement.style.cursor=canOperate(state)&&hit?.object.userData.part==='switch'?'pointer':'grab';});
 viewport.addEventListener('keydown',e=>{
- if(state.view==='circuit'&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(!e.repeat)act({type:'POWER'});return;}
+ if(canOperate(state)&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(!e.repeat)act({type:'POWER'});return;}
  if(e.key==='0'){manualView=false;frameModel();return;}
  if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','-'].includes(e.key))return;e.preventDefault();manualView=true;
  if(e.key==='+'||e.key==='-'){camera.zoom=THREE.MathUtils.clamp(camera.zoom*(e.key==='+'?1.12:.88),.45,4);camera.updateProjectionMatrix();return;}
@@ -154,9 +161,9 @@ function render(now){
  const elapsed=(now-last)/1000,dt=Math.min(elapsed,.05);last=now;
  if(state.direction&&state.view==='model'){
   const next=animationStep(state.progress,state.direction,elapsed,reducedMotion?.01:3.4);state.progress=next.value;state.direction=next.direction;showActive();frameModel();
-  if(!state.direction){syncUI();$('announcement').textContent=state.progress===1?'分解完了':'戻りました';}
+  if(!state.direction){syncUI();updateSelection();$('announcement').textContent=state.progress===1?'分解完了':'戻りました';}
  }
- if(state.power&&state.view==='circuit'&&!reducedMotion)for(const rotor of activeModel().rotors||[])rotor.rotation[rotor.userData.axis||'y']+=dt*15;
+ if(state.power&&canOperate(state)&&!reducedMotion){const model=activeModel();if(state.view==='model'&&model.animate)model.animate(now/1000,dt,true);else for(const rotor of model.rotors||[])rotor.rotation[rotor.userData.axis||'y']+=dt*15;}
  controls.update();scene.updateMatrixWorld(true);
  const occupied=[];
  for(const {part,el,line}of labelEntries){
@@ -183,5 +190,5 @@ function render(now){
  }
  renderer.render(scene,camera);requestAnimationFrame(render);
 }
-showActive();rebuildLabels();syncUI();frameModel();$('loading').remove();requestAnimationFrame(render);
+showActive();rebuildLabels();syncUI();updatePower();frameModel();$('loading').remove();requestAnimationFrame(render);
 window.circuitLab={getState:()=>({...state}),getPartPositions:()=>activeModel().parts.map(p=>({id:p.id,role:p.role,position:p.group.position.toArray()}))};

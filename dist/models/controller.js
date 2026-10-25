@@ -229,16 +229,24 @@ export function createController() {
 
   const power = addPart('power-switch', 'switch', 'スイッチ', [0, 1.48, .61], [.35, 3.55, 1.3], .2, .76, [0, .4, .2]);
   box(power, .33, .33, .22, mat.board, 0, 0, -.15);
-  disc(power, .225, .12, mat.orange, 0, 0, 0);
-  disc(power, .197, .095, mat.dark, 0, 0, .077);
+  const powerRingMaterial = mat.orange.clone();
+  powerRingMaterial.emissive.setHex(0x24a359);
+  powerRingMaterial.emissiveIntensity = 0;
+  const ring = disc(power, .225, .12, powerRingMaterial, 0, 0, 0);
+  ring.name = 'controller-power-ring';
+  const powerButton = new THREE.Group();
+  power.add(powerButton);
+  const button = disc(powerButton, .197, .095, mat.dark, 0, 0, .077);
+  button.name = 'controller-power-button';
+  button.userData.powerControl = true;
   // A physical power icon without any manufacturer lettering.
   const arc = [];
   for (let i = 0; i <= 24; i++) {
     const a = Math.PI * .21 + i * Math.PI * 1.58 / 24;
     arc.push([Math.sin(a) * .103, Math.cos(a) * .103, .132]);
   }
-  segment(power, arc, mat.letter, .013);
-  segment(power, [[0, .14, .132], [0, .035, .132]], mat.letter, .014);
+  segment(powerButton, arc, mat.letter, .013);
+  segment(powerButton, [[0, .14, .132], [0, .035, .132]], mat.letter, .014);
 
   for (const side of [-1, 1]) {
     const role = side < 0 ? 'motor1' : 'motor2';
@@ -255,6 +263,8 @@ export function createController() {
     }
     const weight = new THREE.Group();
     weight.position.y = .57;
+    weight.userData.axis = 'y';
+    weight.userData.spinDirection = side;
     motor.add(weight);
     mesh(new THREE.CylinderGeometry(.29, .29, .18, 32, 1, false, -.2, Math.PI * 1.45), mat.dark, weight, .075, 0, 0);
     cylinder(weight, .06, .21, mat.silver);
@@ -266,8 +276,35 @@ export function createController() {
       if (object.isMesh && part.role) object.userData.part = part.role;
     });
   }
+  let powered = false;
+  function resetVibration() {
+    root.position.set(0, 0, 0);
+    root.rotation.z = 0;
+  }
+  function setPowered(on) {
+    powered = Boolean(on);
+    powerRingMaterial.color.setHex(powered ? 0x64c88b : 0xe46f23);
+    powerRingMaterial.emissiveIntensity = powered ? 1.1 : 0;
+    powerButton.position.z = powered ? -.022 : 0;
+    if (!powered) resetVibration();
+  }
+  function animate(time, dt, active = powered) {
+    if (!powered || !active) {
+      resetVibration();
+      return;
+    }
+    const step = Math.min(Math.max(dt, 0), .05) * 58;
+    for (const rotor of rotors) {
+      rotor.rotation.y = (rotor.rotation.y + step * rotor.userData.spinDirection) % (Math.PI * 2);
+    }
+    // A small bounded movement makes the handle motors' action visible while
+    // preserving the solid controller silhouette and all assembled parts.
+    root.position.x = Math.sin(time * 76) * .028;
+    root.position.y = Math.sin(time * 94) * .014;
+    root.rotation.z = Math.sin(time * 66) * .007;
+  }
   return {
-    root, parts, rotors,
+    root, parts, rotors, setPowered, animate,
     focus: new THREE.Vector3(0, .75, .05),
     floorY: -3.6,
     viewDirection: new THREE.Vector3(.1, .2, 1).normalize(),

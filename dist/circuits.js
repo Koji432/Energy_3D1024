@@ -122,9 +122,13 @@ export function createCircuit(deviceId) {
   function motor(id, label, x, z, small = false, rotorType = 'propeller') {
     const group = part(id, label, x, z, V(0, small ? 1.12 : 1.5, .1));
     const radius = small ? .32 : .48;
-    cylinder(group, radius, small ? .46 : .65, materials.metal, [0, small ? .39 : .5, 0]);
-    cylinder(group, radius * .9, .08, materials.dark, [0, small ? .65 : .87, 0]);
-    cylinder(group, .075, .25, materials.metal, [0, small ? .76 : .98, 0]);
+    const can = cylinder(group, radius, small ? .46 : .65, materials.metal, [0, small ? .39 : .5, 0]);
+    const cap = cylinder(group, radius * .9, .08, materials.dark, [0, small ? .65 : .87, 0]);
+    const shaft = cylinder(group, .075, .25, materials.metal, [0, small ? .76 : .98, 0]);
+    if (rotorType === 'wheel') {
+      for (const object of [can, cap, shaft]) object.rotation.z = Math.PI / 2;
+      can.position.set(-.15, .5, 0); cap.position.set(-.51, .5, 0); shaft.position.set(.27, .5, 0);
+    }
     for (const xSide of [-1, 1]) {
       box(group, [.14, .08, .18], materials.copper, [xSide * radius * .6, .16, xSide * .43]);
     }
@@ -135,7 +139,16 @@ export function createCircuit(deviceId) {
     rotor.userData.axis = 'y';
     rotor.userData.kind = rotorType;
     group.add(rotor);
-    if (rotorType === 'vibration') {
+    if (rotorType === 'wheel') {
+      rotor.position.set(.5, .51, 0); rotor.userData.axis = 'x';
+      cylinder(rotor, .48, .2, materials.dark, [0, 0, 0]).rotation.z = Math.PI / 2;
+      cylinder(rotor, .22, .22, materials.blue, [0, 0, 0]).rotation.z = Math.PI / 2;
+      for (let i = 0; i < 16; i++) {
+        const a = i * Math.PI / 8;
+        const tread = box(rotor, [.23, .055, .13], materials.black, [0, Math.cos(a) * .47, Math.sin(a) * .47]);
+        tread.rotation.x = a;
+      }
+    } else if (rotorType === 'vibration') {
       // The offset brass weight turns with the shaft; there are no propeller blades.
       box(rotor, [.4, .22, .3], materials.gold, [.2, .03, 0]);
       cylinder(rotor, .11, .23, materials.metal, [0, .02, 0]);
@@ -157,14 +170,15 @@ export function createCircuit(deviceId) {
         blade.rotation.z = -.08;
       }
     }
-    cylinder(rotor, small ? .13 : .18, .12, materials.blue, [0, .02, 0]);
+    if (rotorType !== 'wheel') cylinder(rotor, small ? .13 : .18, .12, materials.blue, [0, .02, 0]);
     rotors.push(rotor);
     return group;
   }
 
-  if (deviceId === 'drone' || deviceId === 'controller') {
+  if (deviceId === 'drone' || deviceId === 'controller' || deviceId === 'vacuum') {
     const vibration = deviceId === 'controller';
-    const motorPositions = vibration ? [.45, 2.85] : [-.75, .55, 1.85, 3.15];
+    const vacuum = deviceId === 'vacuum';
+    const motorPositions = vacuum ? [-.4, 1.3, 3] : vibration ? [.45, 2.85] : [-.75, .55, 1.85, 3.15];
     const lastMotor = motorPositions.at(-1);
     battery(-3.2, .3, true);
     slideSwitch(-1.55, -2.05);
@@ -181,7 +195,8 @@ export function createCircuit(deviceId) {
     cable([[.82, -2.05], [lastMotor, -2.05], [lastMotor, -1.15], [motorPositions[0], -1.15]]);
     cable([[-3.2, 1.18], [-3.2, 1.85], [lastMotor, 1.85]], 'black');
     motorPositions.forEach((x, i) => {
-      motor(`motor${i + 1}`, `モーター${i + 1}`, x, .35, !vibration, vibration ? 'vibration' : 'propeller');
+      const rotorType = vacuum ? (i < 2 ? 'wheel' : 'blower') : vibration ? 'vibration' : 'propeller';
+      motor(`motor${i + 1}`, `モーター${i + 1}`, x, .35, !vibration && !vacuum, rotorType);
       cable([[x, -1.15], [x, -.27]]);
       cable([[x, .97], [x, 1.85]], 'black');
     });
@@ -248,6 +263,14 @@ export function diagramMarkup(deviceId) {
     [280, 365, 450, 535].forEach((x, i) => {
       content += `<path class="wire" d="M${x} 200V273M${x} 337V420"/><circle class="wire" cx="${x}" cy="200" r="4" fill="currentColor"/><circle class="wire" cx="${x}" cy="420" r="4" fill="currentColor"/>`;
       content += motorSymbol(`motor${i + 1}`, `モーター${i + 1}`, x, 305, 32, 470, 20);
+    });
+  } else if (deviceId === 'vacuum') {
+    content = `<path class="wire" d="M125 290V90H190M250 90H305M425 90H520V200H300M125 310V420H520"/>`;
+    content += sourceSymbol(false, 300) + switchSymbol(190, 250, 220);
+    content += symbol('controller', '制御基板', `${hit(285, 42, 160, 116)}<rect x="305" y="64" width="120" height="52" rx="3"/>${label('制御基板', 365, 151)}`);
+    [300, 410, 520].forEach((x, i) => {
+      content += `<path class="wire" d="M${x} 200V265M${x} 345V420"/><circle class="wire" cx="${x}" cy="200" r="4" fill="currentColor"/><circle class="wire" cx="${x}" cy="420" r="4" fill="currentColor"/>`;
+      content += motorSymbol(`motor${i + 1}`, `モーター${i + 1}`, x, 305, 40);
     });
   } else if (deviceId === 'controller') {
     content = `<path class="wire" d="M125 290V90H190M250 90H305M425 90H510V200H340M125 310V420H510"/>`;
