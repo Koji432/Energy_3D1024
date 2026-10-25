@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
- <meta name="theme-color" content="#f3f5f7"><meta name="description" content="懐中電灯・扇風機・ドローンの分解と回路図。">
+ <meta name="theme-color" content="#f3f5f7"><meta name="description" content="電気製品の分解と回路図。">
  <title>電気回路</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23245290'/%3E%3Cpath d='m18 4-9 14h7l-2 10 10-15h-7z' fill='white'/%3E%3C/svg%3E">
  <link rel="stylesheet" href="./style.css"><script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
 </head>
@@ -10,14 +10,16 @@
  <main id="app">
   <header class="toolbar">
    <nav class="device-tabs" aria-label="モデルを選択">
-    <button class="device-tab active" data-device="flashlight" aria-pressed="true"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="m5 10 5-3 5 6 13 1v10H14L5 17Z"/><path d="m8 9 5 12M19 14v10"/></svg><span>懐中電灯</span></button>
-    <button class="device-tab" data-device="fan" aria-pressed="false"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="11" r="9"/><circle cx="16" cy="11" r="2"/><path d="M16 20v8M10 29h12M16 9c-7-7-7 5-2 3m4-1c9-1-1-9-2-3m-1 5c-2 9 10 2 3-2"/></svg><span>扇風機</span></button>
-    <button class="device-tab" data-device="drone" aria-pressed="false"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="11" y="11" width="10" height="10" rx="3"/><path d="m11 11-5-5m15 5 5-5M11 21l-5 5m15-5 5 5"/><ellipse cx="6" cy="6" rx="5" ry="2"/><ellipse cx="26" cy="6" rx="5" ry="2"/><ellipse cx="6" cy="26" rx="5" ry="2"/><ellipse cx="26" cy="26" rx="5" ry="2"/></svg><span>ドローン</span></button>
+    <button class="device-tab active" data-device="flashlight" aria-label="懐中電灯" aria-pressed="true"></button>
+    <button class="device-tab" data-device="fan" aria-label="扇風機" aria-pressed="false"></button>
+    <button class="device-tab" data-device="cleaner" aria-label="黒板消しクリーナー" aria-pressed="false"></button>
+    <button class="device-tab" data-device="controller" aria-label="コントローラー" aria-pressed="false"></button>
+    <button class="device-tab" data-device="drone" aria-label="ドローン" aria-pressed="false"></button>
    </nav>
    <div class="actions" aria-label="操作">
-    <button id="disassemble" class="action primary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg>分解</button>
-    <button id="back" class="action" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6-6 6 6 6M3 12h18"/></svg>戻る</button>
-    <button id="refresh" class="action" title="部品の回路と回路図を表示" aria-label="リフレッシュ：部品の回路と回路図を表示"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8a8 8 0 1 0 0 8M20 3v6h-6"/></svg><span>リフレッシュ</span></button>
+    <button id="disassemble" class="action primary" aria-label="分解"></button>
+    <button id="back" class="action" aria-label="戻る" disabled></button>
+    <button id="view-toggle" class="action" aria-label="電気回路を表示" aria-pressed="false"></button>
    </div>
   </header>
   <section class="workspace" aria-label="モデルと回路図">
@@ -28,7 +30,7 @@
    </section>
    <section id="diagram-panel" class="diagram-panel" hidden>
     <h2>回路図</h2><svg id="schematic" viewBox="0 0 640 560" role="group" aria-label="回路図"></svg>
-    <button id="power" class="power" role="switch" aria-checked="false" aria-label="スイッチ"><span>スイッチ</span><span id="power-value">OFF</span><i aria-hidden="true"></i></button>
+
    </section>
   </section>
   <nav id="part-buttons" class="part-buttons" aria-label="部品を選択" hidden></nav>

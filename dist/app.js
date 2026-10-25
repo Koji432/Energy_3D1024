@@ -3,9 +3,14 @@ import {OrbitControls} from './vendor/OrbitControls.js';
 import {phase,animationStep,initialState,transition,devices,partNames} from './model.js';
 import {createFlashlight} from './models/flashlight.js';
 import {createFan} from './models/fan.js';
+import {createCleaner} from './models/cleaner.js';
+import {createController} from './models/controller.js';
+import {circuitIcon,productIcon,deviceIcons,disassembleIcon,backIcon} from './icons.js';
 import {createDrone} from './models/drone.js';
 import {createCircuit,diagramMarkup} from './circuits.js';
 const $=id=>document.getElementById(id);
+for(const b of document.querySelectorAll('[data-device]'))b.innerHTML=deviceIcons[b.dataset.device];
+$('disassemble').innerHTML=disassembleIcon;$('back').innerHTML=backIcon;$('view-toggle').innerHTML=circuitIcon;
 let state=initialState(),manualView=false,highlighted=new Map();
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const viewport=$('viewport'),scene=new THREE.Scene();
@@ -23,7 +28,7 @@ scene.add(new THREE.HemisphereLight(0xffffff,0xa1b0c4,2.6));
 const key=new THREE.DirectionalLight(0xfff8ed,3.2);key.position.set(-6,12,10);key.castShadow=true;key.shadow.mapSize.set(2048,2048);Object.assign(key.shadow.camera,{left:-15,right:15,top:15,bottom:-15});key.shadow.normalBias=.04;scene.add(key);
 const fill=new THREE.DirectionalLight(0xd5e7ff,2);fill.position.set(7,4,-7);scene.add(fill);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(150,150),new THREE.ShadowMaterial({color:0x1d314b,opacity:.12}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
-const constructors={flashlight:createFlashlight,fan:createFan,drone:createDrone},models={},circuits={};
+const constructors={flashlight:createFlashlight,fan:createFan,cleaner:createCleaner,controller:createController,drone:createDrone},models={},circuits={};
 function ensureModel(id){if(!models[id]){models[id]=constructors[id]();for(const p of models[id].parts)p.group.traverse(o=>{if(o.isMesh&&!o.userData.part)o.userData.part=o.userData.role||p.role;});scene.add(models[id].root);}return models[id];}
 function ensureCircuit(id){if(!circuits[id]){circuits[id]=createCircuit(id);scene.add(circuits[id].root);}return circuits[id];}
 function activeModel(){return state.view==='circuit'?ensureCircuit(state.device):ensureModel(state.device);}
@@ -31,7 +36,7 @@ function showActive(){
  for(const m of Object.values(models))m.root.visible=false;
  for(const m of Object.values(circuits))m.root.visible=false;
  const active=activeModel();active.root.visible=true;
- floor.position.y=state.view==='circuit'?-.65:state.device==='fan'?-4.3:state.device==='drone'?-1.55:-1.8;
+ floor.position.y=state.view==='circuit'?-.65:active.floorY??(state.device==='fan'?-4.3:state.device==='drone'?-1.55:-1.8);
  if(state.view==='model')for(const p of active.parts)p.group.position.lerpVectors(p.home,p.away,phase(state.progress,p.start,p.end));
  scene.updateMatrixWorld(true);
 }
@@ -39,7 +44,7 @@ const bounds=new THREE.Box3(),center=new THREE.Vector3(),right=new THREE.Vector3
 function frameModel(){
  if(manualView)return;
  const active=activeModel();scene.updateMatrixWorld(true);bounds.setFromObject(active.root);bounds.getCenter(center);
- const direction=state.view==='circuit'?new THREE.Vector3(.03,.86,.51):state.device==='fan'?new THREE.Vector3(.22,.12,1):state.device==='drone'?new THREE.Vector3(.57,.7,.8):new THREE.Vector3(-.25,.3,1);
+ const direction=state.view==='circuit'?new THREE.Vector3(.03,.86,.51):active.viewDirection?active.viewDirection.clone():state.device==='fan'?new THREE.Vector3(.22,.12,1):state.device==='drone'?new THREE.Vector3(.57,.7,.8):new THREE.Vector3(-.25,.3,1);
  direction.normalize();right.crossVectors(new THREE.Vector3(0,1,0),direction).normalize();up.crossVectors(direction,right).normalize();
  let minW=Infinity,maxW=-Infinity,minH=Infinity,maxH=-Infinity;
  const corner=new THREE.Vector3();
@@ -88,7 +93,8 @@ function updateSelection(){
 }
 function updatePower(){
  const powered=state.view==='circuit'&&state.power;
- document.body.classList.toggle('powered',powered);$('power').setAttribute('aria-checked',String(powered));$('power-value').textContent=powered?'ON':'OFF';
+ document.body.classList.toggle('powered',powered);
+ document.querySelectorAll('[data-part="switch"][role="switch"]').forEach(el=>el.setAttribute('aria-checked',String(powered)));
  document.querySelectorAll('.switch-arm').forEach(el=>el.setAttribute('d',powered?el.dataset.closed:el.dataset.open));
  if(state.view!=='circuit')return;
  const c=ensureCircuit(state.device);
@@ -101,10 +107,12 @@ const partColors={source:'#dc9735',switch:'#47799c',resistor:'#bb6546',led:'#cfa
 function buildDiagram(){
  $('schematic').innerHTML=diagramMarkup(state.device);
  $('part-buttons').replaceChildren();
- for(const role of devices[state.device].roles){const b=document.createElement('button');b.className='part-button';b.dataset.part=role;b.textContent=partNames[role];b.setAttribute('aria-pressed','false');b.style.setProperty('--part-color',partColors[role]||'#647f94');$('part-buttons').append(b);}
+ for(const role of devices[state.device].roles){if(role==='switch')continue;const b=document.createElement('button');b.className='part-button';b.dataset.part=role;b.textContent=partNames[role];b.setAttribute('aria-pressed','false');b.style.setProperty('--part-color',partColors[role]||'#647f94');$('part-buttons').append(b);}
 }
 function syncUI(){
  document.body.classList.toggle('circuit-view',state.view==='circuit');document.body.classList.toggle('drone-view',state.device==='drone');
+ $('view-toggle').innerHTML=state.view==='circuit'?productIcon:circuitIcon;
+ $('view-toggle').setAttribute('aria-label',state.view==='circuit'?'電気製品を表示':'電気回路を表示');$('view-toggle').setAttribute('aria-pressed',String(state.view==='circuit'));
  $('diagram-panel').hidden=state.view!=='circuit';$('model-title').hidden=state.view!=='circuit';$('part-buttons').hidden=state.view!=='circuit';
  $('back').disabled=state.view==='model'&&state.progress===0&&state.direction===0;
  $('disassemble').disabled=state.view==='model'&&state.progress===1&&state.direction===0;
@@ -115,24 +123,26 @@ function syncUI(){
 function act(action){
  const before=state;state=transition(state,action);
  if(action.type==='SELECT'){updateSelection();return;}
- if(action.type==='POWER'){updatePower();return;}
+ if(action.type==='POWER'){updatePower();$('announcement').textContent=state.power?'オン':'オフ';return;}
  clearHighlights();manualView=false;showActive();
  if(action.type==='DEVICE'||before.view!==state.view){rebuildLabels();if(state.view==='circuit')buildDiagram();}
  syncUI();updatePower();updateSelection();frameModel();
- $('announcement').textContent=action.type==='REFRESH'?'部品の回路と回路図':action.type==='DISASSEMBLE'?'分解':action.type==='BACK'?'戻る':devices[state.device].name;
+ $('announcement').textContent=action.type==='TOGGLE_VIEW'?(state.view==='circuit'?'部品の回路と回路図':'製品'):action.type==='DISASSEMBLE'?'分解':action.type==='BACK'?'戻る':devices[state.device].name;
 }
 for(const b of document.querySelectorAll('[data-device]'))b.addEventListener('click',()=>act({type:'DEVICE',device:b.dataset.device}));
-$('disassemble').addEventListener('click',()=>act({type:'DISASSEMBLE'}));$('back').addEventListener('click',()=>act({type:'BACK'}));$('refresh').addEventListener('click',()=>act({type:'REFRESH'}));$('power').addEventListener('click',()=>act({type:'POWER'}));
-document.addEventListener('click',e=>{const el=e.target.closest('[data-part]');if(el)act({type:'SELECT',role:el.dataset.part});});
-$('schematic').addEventListener('keydown',e=>{const el=e.target.closest('[data-part]');if(el&&(e.key==='Enter'||e.key===' ')){e.preventDefault();act({type:'SELECT',role:el.dataset.part});}});
+$('disassemble').addEventListener('click',()=>act({type:'DISASSEMBLE'}));$('back').addEventListener('click',()=>act({type:'BACK'}));$('view-toggle').addEventListener('click',()=>act({type:'TOGGLE_VIEW'}));
+function activatePart(role){act(role==='switch'&&state.view==='circuit'?{type:'POWER'}:{type:'SELECT',role});}
+document.addEventListener('click',e=>{const el=e.target.closest('[data-part]');if(el)activatePart(el.dataset.part);});
+$('schematic').addEventListener('keydown',e=>{const el=e.target.closest('[data-part]');if(el&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(!e.repeat)activatePart(el.dataset.part);}});
 const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();let down=null;
 renderer.domElement.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY};});
 renderer.domElement.addEventListener('pointerup',e=>{
  if(!down||Math.hypot(e.clientX-down.x,e.clientY-down.y)>6)return;
  const rect=renderer.domElement.getBoundingClientRect();pointer.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1);raycaster.setFromCamera(pointer,camera);
- const hit=raycaster.intersectObject(activeModel().root,true)[0];if(hit?.object.userData.part)act({type:'SELECT',role:hit.object.userData.part});
+ const hit=raycaster.intersectObject(activeModel().root,true)[0];if(hit?.object.userData.part)activatePart(hit.object.userData.part);
 });
 viewport.addEventListener('keydown',e=>{
+ if(state.view==='circuit'&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(!e.repeat)act({type:'POWER'});return;}
  if(e.key==='0'){manualView=false;frameModel();return;}
  if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','-'].includes(e.key))return;e.preventDefault();manualView=true;
  if(e.key==='+'||e.key==='-'){camera.zoom=THREE.MathUtils.clamp(camera.zoom*(e.key==='+'?1.12:.88),.45,4);camera.updateProjectionMatrix();return;}

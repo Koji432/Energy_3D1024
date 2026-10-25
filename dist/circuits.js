@@ -119,7 +119,7 @@ export function createCircuit(deviceId) {
     wire(group, [[0, .14, .12], [0, .14, .28], [0, y, .58]], materials.metal, .032);
   }
 
-  function motor(id, label, x, z, small = false) {
+  function motor(id, label, x, z, small = false, rotorType = 'propeller') {
     const group = part(id, label, x, z, V(0, small ? 1.12 : 1.5, .1));
     const radius = small ? .32 : .48;
     cylinder(group, radius, small ? .46 : .65, materials.metal, [0, small ? .39 : .5, 0]);
@@ -133,21 +133,39 @@ export function createCircuit(deviceId) {
     const rotor = new THREE.Group();
     rotor.position.y = small ? .86 : 1.1;
     rotor.userData.axis = 'y';
+    rotor.userData.kind = rotorType;
     group.add(rotor);
-    const bladeLength = small ? .93 : 1.45;
-    for (let i = 0; i < (small ? 2 : 3); i++) {
-      const bladeGroup = new THREE.Group();
-      bladeGroup.rotation.y = i * Math.PI * 2 / (small ? 2 : 3);
-      rotor.add(bladeGroup);
-      const blade = box(bladeGroup, [bladeLength / 2, .045, small ? .16 : .28], materials.blade, [bladeLength / 4, 0, 0]);
-      blade.rotation.z = -.08;
+    if (rotorType === 'vibration') {
+      // The offset brass weight turns with the shaft; there are no propeller blades.
+      box(rotor, [.4, .22, .3], materials.gold, [.2, .03, 0]);
+      cylinder(rotor, .11, .23, materials.metal, [0, .02, 0]);
+    } else if (rotorType === 'blower') {
+      cylinder(rotor, .64, .065, materials.metal, [0, 0, 0]);
+      for (let i = 0; i < 12; i++) {
+        const fin = new THREE.Group();
+        fin.rotation.y = i * Math.PI / 6;
+        rotor.add(fin);
+        box(fin, [.25, .16, .045], materials.blue, [.47, .1, 0]);
+      }
+    } else {
+      const bladeLength = small ? .93 : 1.45;
+      for (let i = 0; i < (small ? 2 : 3); i++) {
+        const bladeGroup = new THREE.Group();
+        bladeGroup.rotation.y = i * Math.PI * 2 / (small ? 2 : 3);
+        rotor.add(bladeGroup);
+        const blade = box(bladeGroup, [bladeLength / 2, .045, small ? .16 : .28], materials.blade, [bladeLength / 4, 0, 0]);
+        blade.rotation.z = -.08;
+      }
     }
     cylinder(rotor, small ? .13 : .18, .12, materials.blue, [0, .02, 0]);
     rotors.push(rotor);
     return group;
   }
 
-  if (deviceId === 'drone') {
+  if (deviceId === 'drone' || deviceId === 'controller') {
+    const vibration = deviceId === 'controller';
+    const motorPositions = vibration ? [.45, 2.85] : [-.75, .55, 1.85, 3.15];
+    const lastMotor = motorPositions.at(-1);
     battery(-3.2, .3, true);
     slideSwitch(-1.55, -2.05);
     const board = part('controller', '制御基板', .25, -2.05, V(0, .8, -.15));
@@ -160,21 +178,21 @@ export function createCircuit(deviceId) {
     for (const x of [-.47, .47]) cylinder(board, .055, .075, materials.gold, [x, .34, -.25]);
     cable([[-3.2, -.58], [-3.2, -2.05], [-2.05, -2.05]]);
     cable([[-1.05, -2.05], [-.32, -2.05]]);
-    cable([[.82, -2.05], [3.15, -2.05], [3.15, -1.15], [-.75, -1.15]]);
-    cable([[-3.2, 1.18], [-3.2, 1.85], [3.15, 1.85]], 'black');
-    [-.75, .55, 1.85, 3.15].forEach((x, i) => {
-      motor(`motor${i + 1}`, `モーター${i + 1}`, x, .35, true);
+    cable([[.82, -2.05], [lastMotor, -2.05], [lastMotor, -1.15], [motorPositions[0], -1.15]]);
+    cable([[-3.2, 1.18], [-3.2, 1.85], [lastMotor, 1.85]], 'black');
+    motorPositions.forEach((x, i) => {
+      motor(`motor${i + 1}`, `モーター${i + 1}`, x, .35, !vibration, vibration ? 'vibration' : 'propeller');
       cable([[x, -1.15], [x, -.27]]);
       cable([[x, .97], [x, 1.85]], 'black');
     });
-  } else if (deviceId === 'fan') {
+  } else if (deviceId === 'fan' || deviceId === 'cleaner') {
     const source = part('source', '電源', -3.1, 0, V(0, 1.0, .1));
     box(source, [.85, .65, 1.1], materials.blue, [0, .4, 0]);
     box(source, [.88, .18, 1.12], materials.white, [0, .82, 0]);
     for (const x of [-.22, .22]) box(source, [.12, .08, .43], materials.metal, [x, .45, -.74]);
     box(source, [.6, .08, .25], materials.dark, [0, .95, 0]);
     slideSwitch();
-    motor('motor', 'モーター', 3.05, 0);
+    motor('motor', 'モーター', 3.05, 0, false, deviceId === 'cleaner' ? 'blower' : 'propeller');
     cable([[-3.1, -.75], [-3.1, -2.05], [-.85, -2.05]]);
     cable([[.15, -2.05], [3.05, -2.05], [3.05, -.62]]);
     cable([[3.05, .62], [3.05, 2.05], [-3.1, 2.05], [-3.1, .58]], 'black');
@@ -197,10 +215,10 @@ export function createCircuit(deviceId) {
 
 const label = (text, x, y, size = 28) => `<text class="symbol-label" x="${x}" y="${y}" text-anchor="middle" fill="currentColor" stroke="none" style="font-size:${size}px" font-family="sans-serif">${text}</text>`;
 const hit = (x, y, width, height) => `<rect class="hitbox" x="${x}" y="${y}" width="${width}" height="${height}" rx="14" fill="transparent" stroke="none"/>`;
-const symbol = (id, name, body) => `<g class="symbol" data-part="${id}" role="button" tabindex="0" aria-label="${name}">${body}</g>`;
+const symbol = (id, name, body, role = 'button') => `<g class="symbol" data-part="${id}" role="${role}" tabindex="0" aria-label="${name}"${role === 'switch' ? ' aria-checked="false"' : ''}>${body}</g>`;
 const switchSymbol = (left = 270, right = 350, textX = 310) => {
   const open = `M${left} 90L${right - 10} 52`, closed = `M${left} 90H${right}`;
-  return symbol('switch', 'スイッチ', `${hit(left - 28, 35, right - left + 56, 118)}<circle cx="${left}" cy="90" r="4"/><circle cx="${right}" cy="90" r="4"/><path class="switch-arm" data-open="${open}" data-closed="${closed}" d="${open}"/>${label('スイッチ', textX, 145)}`);
+  return symbol('switch', 'スイッチ', `${hit(left - 28, 35, right - left + 56, 118)}<circle cx="${left}" cy="90" r="4"/><circle cx="${right}" cy="90" r="4"/><path class="switch-arm" data-open="${open}" data-closed="${closed}" d="${open}"/>${label('スイッチ', textX, 145)}`, 'switch');
 };
 
 function sourceSymbol(ac = false, center = 275) {
@@ -213,10 +231,11 @@ function sourceSymbol(ac = false, center = 275) {
 function motorSymbol(id, name, x, cy, radius = 42, textY = cy + 91, fontSize = 28, textX = x) {
   const numbered=/^motor[1-4]$/.test(id);
   const motorText=numbered?'M'+id.slice(5):'M';
+  const motorFont=numbered&&radius<40?30:38;
   const left=x-radius-13;
   const right=numbered?x+radius+13:Math.max(x+radius+13,textX+name.length*fontSize/2+6);
   const height=numbered?radius*2+26:Math.max(radius*2+26,textY-cy+radius+24);
-  return symbol(id,name,`${hit(left,cy-radius-13,right-left,height)}<circle cx="${x}" cy="${cy}" r="${radius}"/><text x="${x}" y="${cy+(numbered?10:13)}" text-anchor="middle" fill="currentColor" stroke="none" style="font-size:${numbered?30:38}px" font-family="sans-serif">${motorText}</text>${numbered?'':label(name,textX,textY,fontSize)}`);
+  return symbol(id,name,`${hit(left,cy-radius-13,right-left,height)}<circle cx="${x}" cy="${cy}" r="${radius}"/><text x="${x}" y="${cy+(motorFont===30?10:13)}" text-anchor="middle" fill="currentColor" stroke="none" style="font-size:${motorFont}px" font-family="sans-serif">${motorText}</text>${numbered?'':label(name,textX,textY,fontSize)}`);
 }
 
 /** SVG children only. The caller supplies the 640 × 560 outer SVG. */
@@ -230,7 +249,15 @@ export function diagramMarkup(deviceId) {
       content += `<path class="wire" d="M${x} 200V273M${x} 337V420"/><circle class="wire" cx="${x}" cy="200" r="4" fill="currentColor"/><circle class="wire" cx="${x}" cy="420" r="4" fill="currentColor"/>`;
       content += motorSymbol(`motor${i + 1}`, `モーター${i + 1}`, x, 305, 32, 470, 20);
     });
-  } else if (deviceId === 'fan') {
+  } else if (deviceId === 'controller') {
+    content = `<path class="wire" d="M125 290V90H190M250 90H305M425 90H510V200H340M125 310V420H510"/>`;
+    content += sourceSymbol(false, 300) + switchSymbol(190, 250, 220);
+    content += symbol('controller', '制御基板', `${hit(285, 42, 160, 116)}<rect x="305" y="64" width="120" height="52" rx="3"/>${label('制御基板', 365, 151)}`);
+    [340, 510].forEach((x, i) => {
+      content += `<path class="wire" d="M${x} 200V261M${x} 349V420"/><circle class="wire" cx="${x}" cy="200" r="4" fill="currentColor"/><circle class="wire" cx="${x}" cy="420" r="4" fill="currentColor"/>`;
+      content += motorSymbol(`motor${i + 1}`, `モーター${i + 1}`, x, 305, 44);
+    });
+  } else if (deviceId === 'fan' || deviceId === 'cleaner') {
     content = `<path class="wire" d="M125 239V90H270M350 90H500V233M500 317V460H125V311"/>`;
     content += sourceSymbol(true) + switchSymbol() + motorSymbol('motor', 'モーター', 500, 275, 42, 360, 25, 568);
   } else {
