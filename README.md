@@ -24,7 +24,9 @@ npm test
 
 ## GitHub Pages
 
-mainへのpushで `.github/workflows/pages.yml` が `dist/` を公開します。GitHubログイン不要で開けます。
+mainへのpushで `.github/workflows/pages.yml` が `npm run build` を実行し、生成した `site/` を公開します。CSS・JavaScript全体を内容のハッシュ付きURLに置き、端末に古いファイルが残っていても、新しいHTMLからは同じ更新のファイルを読み込みます。GitHubログイン不要で開けます。
+
+すでに開いている端末で以前のHTMLが残る場合は、公開URLの末尾に `?v=` と `site/version.json` のバージョン値を付けて開けます。ローカル開発は従来どおり `npm start` だけで動きます。
 
 ## ファイル
 
