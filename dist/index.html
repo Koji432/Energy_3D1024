@@ -31,10 +31,27 @@
    </section>
    <section id="diagram-panel" class="diagram-panel" hidden>
     <h2>回路図</h2><svg id="schematic" viewBox="0 0 640 560" role="group" aria-label="回路図"></svg>
-
+    <button id="mechanism-jump" class="mechanism-jump" aria-label="機構の詳細を見る" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.7 3-2 .9L3.6 6l-2 3.5 2.2 2-.1 2.3-2.1 2 2 3.4 2.8-.9 2 .9L9 22h4l.7-2.8 2-.9 2.8.9 2-3.4-2.2-2v-2.3l2.2-2-2-3.5-2.8.9-2-.9L13 3Z"/><circle cx="11" cy="12.5" r="3.5"/></svg><span>詳しく</span></button>
    </section>
   </section>
   <nav id="part-buttons" class="part-buttons" aria-label="部品を選択" hidden></nav>
+  <section id="mechanism-detail" class="mechanism-detail" aria-labelledby="mechanism-heading" hidden>
+   <header class="mechanism-header">
+    <div><p class="mechanism-eyebrow">機構の動き</p><h2 id="mechanism-heading" tabindex="-1">走行</h2></div>
+    <div class="mechanism-status"><span id="mechanism-power">OFF</span><a href="#schematic">回路図のスイッチへ</a></div>
+   </header>
+   <nav class="mechanism-tabs" aria-label="機構を選択">
+    <button type="button" data-mechanism="drive" aria-pressed="true">走行</button>
+    <button type="button" data-mechanism="suction" aria-pressed="false">床下の吸引</button>
+    <button type="button" data-mechanism="wing" aria-pressed="false">可動翼</button>
+    <button type="button" data-mechanism="thrust" aria-pressed="false">ガス噴射</button>
+   </nav>
+   <ol id="mechanism-flow" class="mechanism-flow" aria-label="動きの伝わり方"></ol>
+   <p class="mechanism-pan-hint">図は左右に動かせます</p>
+   <div id="mechanism-illustration" class="mechanism-illustration" tabindex="0" aria-label="機構の拡大図"></div>
+   <div id="mechanism-captions" class="mechanism-captions"></div>
+   <p class="mechanism-note">動きの関係を示す模式図</p>
+  </section>
   <p id="announcement" class="sr-only" role="status"></p>
  </main>
  <noscript>JavaScriptを有効にしてください。</noscript>

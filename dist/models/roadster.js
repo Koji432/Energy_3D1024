@@ -4,12 +4,13 @@ import * as THREE from 'three';
 // Rear extraction fans create downforce; the separate cold-gas nozzles lift it.
 export function createRoadster() {
   const root = new THREE.Group(), parts = [], wheels = [], fans = [], jets = [], plungers = [];
+  const driveGears = [], leadScrews = [], valvePorts = [], airParticles = [];
   const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
   const standard = (color, roughness = .45, metalness = .15) => new THREE.MeshStandardMaterial({color, roughness, metalness});
   const m = {
     pearl: new THREE.MeshPhysicalMaterial({color: 0xf3f2e9, roughness: .27, metalness: .23, clearcoat: .8, clearcoatRoughness: .23, flatShading: true}),
     black: standard(0x171c20, .5, .25), carbon: standard(0x252a2d, .58, .3), rubber: standard(0x151719, .9, .02),
-    steel: standard(0x99a8b1, .27, .88), darkSteel: standard(0x424b52, .28, .85), gold: standard(0xb79661, .32, .76),
+    steel: standard(0x99a8b1, .27, .88), darkSteel: standard(0x424b52, .28, .85), gold: standard(0xb79661, .32, .76), copper: standard(0xc37a42, .3, .8),
     green: standard(0x17735a, .65, .12), trace: standard(0x8fc28b, .6, .23), orange: standard(0xdd7132, .48, .25),
     battery: standard(0x3d4b56, .48, .45), white: standard(0xe0e7e9, .3, .1),
     glass: new THREE.MeshPhysicalMaterial({color: 0xb58c57, roughness: .15, metalness: .43, transparent: true, opacity: .87, transmission: .12, clearcoat: 1, side: THREE.DoubleSide, flatShading: true}),
@@ -28,6 +29,17 @@ export function createRoadster() {
   function tube(group, points, material, radius = .025) {
     const curve = new THREE.CatmullRomCurve3(points.map(p => V(...p)));
     return mesh(new THREE.TubeGeometry(curve, 24, radius, 7, false), material, group);
+  }
+  function gear(group, radius, teeth, x, y, z, material = m.steel) {
+    const wheel = new THREE.Group(); wheel.position.set(x, y, z); group.add(wheel);
+    const disc = cylinder(wheel, radius * .86, .045, material); disc.rotation.x = Math.PI / 2;
+    for (let i = 0; i < teeth; i++) {
+      const angle = i * Math.PI * 2 / teeth;
+      const tooth = box(wheel, radius * .27, radius * .27, .05, material, Math.sin(angle) * radius * .88, Math.cos(angle) * radius * .88, 0);
+      tooth.rotation.z = -angle;
+    }
+    const hub = cylinder(wheel, radius * .19, .065, m.darkSteel, 0, 0, .018); hub.rotation.x = Math.PI / 2;
+    return wheel;
   }
   function part(id, role, label, home, away, start = .2, end = .82, offset = [0, .5, 0]) {
     const group = new THREE.Group();
@@ -131,17 +143,47 @@ export function createRoadster() {
   for (const x of [-.48, .48]) for (const z of [-.35, .35]) cylinder(control, .036, .12, m.gold, x, .025, z);
 
   const drive = part('drive-unit', 'motor', '走行モーター', [2.35, -.11, 0], [2.6, 1.7, 2.6], .27, .84, [.15, .65, .2]);
-  const motor = cylinder(drive, .38, 1.18, m.steel); motor.rotation.x = Math.PI / 2;
-  for (const z of [-.61, .61]) { const cap = cylinder(drive, .39, .07, m.darkSteel, 0, 0, z); cap.rotation.x = Math.PI / 2; }
-  box(drive, .86, .49, .6, m.darkSteel, .54, -.05, 0);
-  const shaft = cylinder(drive, .075, 3.15, m.steel, .44, 0, 0); shaft.rotation.x = Math.PI / 2;
+  // Open upper sleeve reveals fixed copper windings around the rotating core.
+  const sleeveMaterial = m.steel.clone(); sleeveMaterial.side = THREE.DoubleSide;
+  for (const z of [-.33, .33]) {
+    const motor = mesh(new THREE.CylinderGeometry(.4, .4, .54, 48, 1, true, -Math.PI * .55, Math.PI * 1.1), sleeveMaterial, drive, 0, 0, z); motor.rotation.x = Math.PI / 2;
+    box(drive, .32, .14, .4, m.black, -.5, .12, z);
+    tube(drive, [[-.49, .23, z], [-.26, .32, z], [-.16, .27, z]], m.orange, .027);
+  }
+  for (const z of [-.61, -.055, .055, .61]) ring(drive, .365, .031, m.darkSteel, 0, 0, z);
+  const driveRotor = new THREE.Group(); driveRotor.name = 'roadster-drive-rotor'; drive.add(driveRotor);
+  for (const z of [-.33, .33]) {const rotorCore = cylinder(driveRotor, .17, .57, m.darkSteel, 0, 0, z); rotorCore.rotation.x = Math.PI / 2;}
+  for (let i = 0; i < 8; i++) {
+    const angle = i * Math.PI / 4;
+    for (const z of [-.33, .33]) {const magnet = box(driveRotor, .09, .045, .45, i % 2 ? m.black : m.steel, Math.sin(angle) * .17, Math.cos(angle) * .17, z); magnet.rotation.z = -angle;}
+    const pole = new THREE.Group(); pole.position.set(Math.sin(angle) * .285, Math.cos(angle) * .285, 0); pole.rotation.z = -angle; drive.add(pole);
+    box(pole, .075, .1, .81, m.darkSteel);
+    for (let turn = 0; turn < 8; turn++) {
+      const z = turn < 4 ? -.51 + turn * .12 : .15 + (turn - 4) * .12;
+      const winding = mesh(new THREE.TorusGeometry(.064, .012, 6, 16), m.copper, pole, 0, 0, z); winding.scale.y = 1.15;
+    }
+  }
+  // A small exposed reduction stage and planetary carrier drive the axle.
+  box(drive, .91, .075, .65, m.darkSteel, .54, -.28, 0);
+  for (const x of [.12, .96]) box(drive, .065, .47, .65, m.darkSteel, x, -.04, 0);
+  const inputGear = gear(drive, .115, 12, 0, 0, .76, m.gold); driveGears.push({object: inputGear, rate: 13});
+  const transfer = gear(drive, .14, 14, .23, 0, .76); driveGears.push({object: transfer, rate: -10});
+  ring(drive, .325, .033, m.darkSteel, .44, 0, .77);
+  const sun = gear(drive, .108, 12, .44, 0, .78, m.gold); driveGears.push({object: sun, rate: 9});
+  const carrier = new THREE.Group(); carrier.position.set(.44, 0, .78); drive.add(carrier); driveGears.push({object: carrier, rate: 2.8});
+  for (let i = 0; i < 3; i++) {
+    const angle = i * Math.PI * 2 / 3, x = Math.sin(angle) * .205, y = Math.cos(angle) * .205;
+    const planet = gear(carrier, .092, 10, x, y, 0); driveGears.push({object: planet, rate: -6.2});
+    const arm = box(carrier, .035, .21, .018, m.darkSteel, x * .5, y * .5, .06); arm.rotation.z = -angle;
+  }
+  for (const z of [-.9, .9]) {const shaft = cylinder(drive, .075, 1.35, m.steel, .44, 0, z); shaft.rotation.x = Math.PI / 2;}
   tube(drive, [[-.1, .31, .47], [-.35, .43, .5], [-.95, .41, .5]], m.orange, .045);
 
   const fanModule = part('suction-fans', 'fan', '吸引ファン', [4.08, .02, 0], [4.3, 3.05, -.2], .25, .85, [0, .9, 0]);
   for (const y of [-.18, .27]) for (const z of [-.55, .55]) {
     const housing = new THREE.Group(); housing.position.set(0, y, z); housing.rotation.z = -Math.PI / 2; fanModule.add(housing);
     const shroud = ring(housing, .23, .045, m.darkSteel); shroud.rotation.x = Math.PI / 2;
-    const back = cylinder(housing, .2, .045, m.black, 0, -.07, 0);
+    const back = mesh(new THREE.CylinderGeometry(.205, .205, .045, 32, 1, true), m.darkSteel, housing, 0, -.07, 0);
     const spin = new THREE.Group(); spin.position.y = .035; housing.add(spin); fans.push(spin);
     cylinder(spin, .055, .07, m.steel);
     for (let i = 0; i < 7; i++) {
@@ -150,9 +192,28 @@ export function createRoadster() {
     }
     back.name = 'downforce-fan-housing';
   }
-  // Floor inlet ducts connect the rear extraction unit to the sealed underfloor.
-  box(fanModule, 1.0, .1, 1.7, m.carbon, -.4, -.49, 0);
-  for (let i = 0; i < 7; i++) box(fanModule, .6, .055, .035, m.darkSteel, -.46, -.56, -.64 + i * .21);
+  // Open duct floor and two intake branches make the underfloor→rear path clear.
+  box(fanModule, 2.15, .065, 1.55, m.carbon, -1.25, -.5, 0);
+  for (const side of [-1, 1]) {
+    box(fanModule, 2.15, .21, .045, m.darkSteel, -1.25, -.42, side * .775);
+    tube(fanModule, [[-.69, -.45, side * .55], [-.38, -.35, side * .55], [-.15, -.06, side * .55], [-.09, .1, side * .55]], m.darkSteel, .115);
+  }
+  for (let i = 0; i < 8; i++) box(fanModule, 1.87, .025, .025, m.darkSteel, -1.27, -.457, -.62 + i * .177);
+  const intakeSeal = new THREE.Group(); intakeSeal.position.set(-1.27, -.52, 0); fanModule.add(intakeSeal);
+  for (const side of [-1, 1]) box(intakeSeal, 2.05, .1, .055, m.rubber, 0, -.05, side * .72);
+  for (const x of [-1.0, 1.0]) box(intakeSeal, .055, .1, 1.44, m.rubber, x, -.05, 0);
+  const suctionFlow = new THREE.Group(); suctionFlow.name = 'roadster-suction-airflow'; suctionFlow.visible = false; fanModule.add(suctionFlow);
+  const flowMaterial = new THREE.MeshBasicMaterial({color: 0x71d9ef, transparent: true, opacity: .68, depthWrite: false});
+  for (const y of [-.18, .27]) for (const z of [-.55, .55]) {
+    const path = new THREE.CatmullRomCurve3([V(-2.32, -.91, z), V(-1.9, -.43, z), V(-.72, -.4, z), V(-.32, -.21, z), V(0, y, z), V(.95, y, z)]);
+    for (let i = 0; i < 5; i++) {
+      const arrow = new THREE.Group(); suctionFlow.add(arrow);
+      cylinder(arrow, .026, .135, flowMaterial);
+      mesh(new THREE.ConeGeometry(.063, .12, 8), flowMaterial, arrow, 0, .11, 0);
+      airParticles.push({object: arrow, path, phase: i / 5});
+    }
+  }
+  suctionFlow.traverse(object => {if (object.isMesh) {object.userData.excludeFromFrame = true; object.raycast = () => {}; object.castShadow = false;}});
 
   const aero = part('wing-actuator', 'actuator', '翼の駆動部', [3.55, .62, 0], [4.3, 2.15, -3.0], .19, .78, [0, .9, 0]);
   box(aero, .58, .17, 2.35, m.carbon, 0, -.12, 0);
@@ -160,8 +221,17 @@ export function createRoadster() {
   box(movingWing, .67, .065, 3.04, m.black, 0, .04, 0);
   for (const side of [-1, 1]) {
     box(movingWing, .62, .18, .035, m.carbon, .03, .11, side * 1.52);
-    cylinder(aero, .065, .25, m.darkSteel, 0, -.09, side * 1.05);
-    cylinder(movingWing, .038, .45, m.steel, 0, -.16, side * 1.05);
+    cylinder(aero, .067, .3, m.darkSteel, 0, -.04, side * 1.05);
+    const motorBase = cylinder(aero, .1, .25, m.steel, .15, -.17, side * 1.05); motorBase.rotation.x = Math.PI / 2;
+    box(aero, .15, .15, .19, m.black, .05, -.14, side * 1.05);
+    const screw = new THREE.Group(); screw.position.set(0, -.16, side * 1.05); movingWing.add(screw); leadScrews.push(screw);
+    cylinder(screw, .033, .45, m.steel);
+    const thread = [];
+    for (let i = 0; i <= 180; i++) {const a = i / 180 * Math.PI * 24; thread.push([Math.sin(a) * .039, -.21 + i / 180 * .42, Math.cos(a) * .039]);}
+    const threadCurve = new THREE.CatmullRomCurve3(thread.map(p => V(...p)));
+    mesh(new THREE.TubeGeometry(threadCurve, 360, .006, 5, false), m.gold, screw);
+    box(movingWing, .15, .13, .15, m.darkSteel, 0, -.035, side * 1.05);
+    const hinge = cylinder(movingWing, .053, .2, m.gold, 0, -.012, side * 1.05); hinge.rotation.x = Math.PI / 2;
   }
 
   const tanks = part('gas-vessels', 'tank', 'ガスタンク', [.62, .28, -.38], [4.0, 4.1, -2.0], .23, .85, [0, .65, -.15]);
@@ -179,10 +249,18 @@ export function createRoadster() {
   }
 
   const valves = part('electric-valves', 'valve', '電動バルブ', [1.91, .25, 0], [4.0, 2.9, 2.5], .27, .85, [.1, .75, .1]);
+  const valveIndicator = m.indicator.clone(); valveIndicator.emissiveIntensity = 0;
   for (const x of [-.28, .28]) for (const z of [-.35, .35]) {
     box(valves, .32, .2, .25, m.gold, x, 0, z);
-    cylinder(valves, .095, .23, m.black, x, .19, z);
+    const motor = cylinder(valves, .075, .18, m.darkSteel, x + .1, .19, z); motor.rotation.x = Math.PI / 2;
+    box(valves, .16, .12, .16, m.black, x - .025, .19, z);
+    cylinder(valves, .029, .13, m.steel, x, .265, z);
     const plunger = cylinder(valves, .045, .09, m.steel, x, .345, z); plungers.push({mesh: plunger, homeY: .345});
+    const gate = new THREE.Group(); gate.position.set(x, .4, z); valves.add(gate); valvePorts.push(gate);
+    cylinder(gate, .073, .018, m.darkSteel);
+    box(gate, .12, .02, .024, valveIndicator, 0, .02, 0);
+    const inlet = cylinder(valves, .047, .045, m.steel, x + .17, -.01, z); inlet.rotation.z = Math.PI / 2;
+    tube(valves, [[x + .12, .2, z + .09], [x + .2, .28, z + .14], [x + .3, .27, z + .16]], m.orange, .012);
     tube(valves, [[x, -.02, z], [x + .2, -.02, z + Math.sign(z) * .18], [x + .38, -.08, z + Math.sign(z) * .18]], m.steel, .027);
   }
 
@@ -225,31 +303,37 @@ export function createRoadster() {
   controlHitArea.castShadow = controlHitArea.receiveShadow = false;
   for (const p of parts) if (p.role) p.group.traverse(object => { if (object.isMesh) object.userData.part = p.role; });
 
-  let powered = false, flightElapsed = 0;
+  let powered = false, flightElapsed = 0, operationElapsed = 0;
   const demonstrationDuration = 5.4;
   const smooth = value => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t); };
   function aeroPosition(amount) {
     movingWing.position.y = amount * .5; movingWing.rotation.z = amount * -.12;
+    for (const screw of leadScrews) screw.rotation.y = amount * Math.PI * 8;
     splitter.position.x = -4.33 - amount * .15; splitter.position.y = -.43 - amount * .075;
     for (const skirt of skirts) { skirt.position.y = -.46 - amount * .11; skirt.position.z = skirt.userData.side * (1.65 + amount * .1); }
   }
   function hideJets() {
     for (const jet of jets) jet.group.visible = false;
     for (const item of plungers) item.mesh.position.y = item.homeY;
+    for (const gate of valvePorts) gate.rotation.y = 0;
+    valveIndicator.color.setHex(0x5e7568); valveIndicator.emissiveIntensity = 0;
   }
   function setPowered(on) {
     const next = Boolean(on);
-    if (next && !powered) flightElapsed = 0;
+    if (next && !powered) {flightElapsed = 0; operationElapsed = 0;}
     powered = next;
     m.head.color.setHex(powered ? 0xe7faff : 0x9cafb8); m.head.emissiveIntensity = powered ? 2.4 : 0;
     m.tail.emissiveIntensity = powered ? 1.5 : .08;
     m.indicator.color.setHex(powered ? 0x70d69b : 0x5e7568); m.indicator.emissiveIntensity = powered ? 1.15 : 0;
     powerCap.position.y = powered ? -.012 : 0;
-    if (!powered) { flightElapsed = 0; root.position.set(0, 0, 0); root.rotation.set(0, 0, 0); aeroPosition(0); hideJets(); }
+    if (!powered) {
+      flightElapsed = 0; operationElapsed = 0; root.position.set(0, 0, 0); root.rotation.set(0, 0, 0);
+      aeroPosition(0); hideJets(); suctionFlow.visible = false; intakeSeal.scale.y = 1;
+    }
   }
   function animate(_time, dt, on = powered) {
     if (!powered || !on) return;
-    const step = Math.max(0, Math.min(dt, .1)); flightElapsed = Math.min(demonstrationDuration, flightElapsed + step);
+    const step = Math.max(0, Math.min(dt, .1)); flightElapsed = Math.min(demonstrationDuration, flightElapsed + step); operationElapsed += step;
     const t = flightElapsed;
     let lift = 0;
     if (t >= .55 && t < 1.9) lift = .82 * smooth((t - .55) / 1.35);
@@ -260,12 +344,24 @@ export function createRoadster() {
     root.rotation.z = lift > 0 ? Math.sin((t - .55) / 4.4 * Math.PI * 2) * .023 * (lift / .82) : 0;
     aeroPosition(smooth(t / .55));
     // Suction fans run on the ground, providing downforce rather than lift.
-    if (lift < .035) {
+    const grounded = lift < .035;
+    suctionFlow.visible = grounded;
+    intakeSeal.scale.y = grounded ? 1 + smooth(operationElapsed / .5) * 5 : 1;
+    if (grounded) {
       for (const fan of fans) fan.rotation.y = (fan.rotation.y + step * 22) % (Math.PI * 2);
       for (const wheel of wheels) wheel.rotation.z = (wheel.rotation.z + step * 2.2) % (Math.PI * 2);
+      driveRotor.rotation.z = (driveRotor.rotation.z + step * 15) % (Math.PI * 2);
+      for (const item of driveGears) item.object.rotation.z = (item.object.rotation.z + step * item.rate) % (Math.PI * 2);
+      for (const item of airParticles) {
+        const phase = (operationElapsed * .52 + item.phase) % 1;
+        item.object.position.copy(item.path.getPointAt(phase));
+        item.object.quaternion.setFromUnitVectors(V(0, 1, 0), item.path.getTangentAt(phase));
+      }
     }
     const gas = t > .38 && t < 5.15 ? smooth((t - .38) / .24) * (1 - smooth((t - 4.8) / .35)) : 0;
     for (const item of plungers) item.mesh.position.y = item.homeY + gas * .035;
+    for (const gate of valvePorts) gate.rotation.y = gas * Math.PI / 2;
+    valveIndicator.color.setHex(gas > .05 ? 0x71d99e : 0x5e7568); valveIndicator.emissiveIntensity = gas * 1.15;
     for (let j = 0; j < jets.length; j++) {
       const jet = jets[j]; jet.group.visible = gas > .005;
       jet.group.scale.y = Math.min(1, (.59 + lift) / 1.23);

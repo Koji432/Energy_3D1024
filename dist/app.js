@@ -10,10 +10,14 @@ import {circuitIcon,productIcon,deviceIcons,disassembleIcon,assembleIcon} from '
 import {createDrone} from './models/drone.js';
 import {createRoadster} from './models/roadster.js';
 import {createCircuit,diagramMarkup} from './circuits.js';
+import {mechanisms,mechanismForRole,mechanismMarkup} from './roadster-mechanisms.js';
+import {wingMechanismPose} from './mechanism-motion.js';
 const $=id=>document.getElementById(id);
 for(const b of document.querySelectorAll('[data-device]'))b.innerHTML=deviceIcons[b.dataset.device];
 $('disassemble').innerHTML=disassembleIcon;$('view-toggle').innerHTML=circuitIcon;
 let state=initialState(),manualView=false,highlighted=new Map();
+let currentMechanism='drive',renderedMechanism=null;
+let mechanismTime=0,mechanismMotionTargets={};
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const viewport=$('viewport'),scene=new THREE.Scene();
 let renderer;
@@ -86,8 +90,37 @@ function rebuildLabels(){
  }
 }
 function clearHighlights(){for(const [m,original]of highlighted){m.material.dispose();m.material=original;}highlighted.clear();}
+function moveWingMechanism(amount){
+ const pose=wingMechanismPose(amount),targets=mechanismMotionTargets,dx=pose.rodOffsetX;
+ targets.wing?.setAttribute('transform',`rotate(${pose.wingAngleDeg} 846 213)`);
+ targets.rod?.setAttribute('transform',`translate(${dx} 0)`);
+ targets.link?.setAttribute('transform',`translate(${dx} 0) rotate(${pose.linkAngleDeg} ${790-Math.sqrt(4000)} 213)`);
+ targets['wing-motor']?.setAttribute('transform',`rotate(${dx*24} 125 186)`);
+ targets['wing-thread']?.setAttribute('transform',`translate(${dx*2%15} 0)`);
+}
+function syncMechanism(){
+ const detail=$('mechanism-detail'),visible=state.device==='roadster'&&state.view==='circuit';
+ detail.hidden=!visible;$('mechanism-jump').hidden=!visible;
+ detail.classList.toggle('is-powered',visible&&state.power);
+ if(!visible)return;
+ currentMechanism=mechanismForRole(state.selected,currentMechanism);
+ const mechanism=mechanisms[currentMechanism];
+ if(renderedMechanism!==currentMechanism){
+  $('mechanism-heading').textContent=mechanism.title;
+  $('mechanism-illustration').innerHTML=mechanismMarkup(currentMechanism);
+  $('mechanism-flow').replaceChildren(...mechanism.flow.map(text=>{const item=document.createElement('li');item.textContent=text;return item;}));
+  $('mechanism-captions').replaceChildren(...mechanism.caption.map(text=>{const p=document.createElement('p');p.textContent=text;return p;}));
+  mechanismTime=0;
+  mechanismMotionTargets=Object.fromEntries([...$('mechanism-illustration').querySelectorAll('[data-motion]')].map(el=>[el.dataset.motion,el]));
+  if(currentMechanism==='wing')moveWingMechanism(0);
+  renderedMechanism=currentMechanism;
+ }
+ $('mechanism-power').textContent=state.power?'ON':'OFF';
+ for(const tab of document.querySelectorAll('[data-mechanism]'))tab.setAttribute('aria-pressed',String(tab.dataset.mechanism===currentMechanism));
+}
 function updateSelection(){
  clearHighlights();
+ syncMechanism();
  for(const el of document.querySelectorAll('[data-part]')){
   const selected=el.dataset.part===state.selected;el.classList.toggle('selected',selected);if(el.tagName==='BUTTON')el.setAttribute('aria-pressed',String(selected));
  }
@@ -132,6 +165,7 @@ function syncUI(){
  $('schematic').setAttribute('aria-label',`${devices[state.device].name}の回路図`);
 }
 function act(action){
+ if(action.type==='DEVICE')currentMechanism='drive';
  const before=state;state=transition(state,action);
  if(action.type==='SELECT'){updateSelection();renderer.render(scene,camera);return;}
  if(action.type==='POWER'){updatePower();renderer.render(scene,camera);$('announcement').textContent=state.power?'オン':'オフ';return;}
@@ -141,6 +175,13 @@ function act(action){
  $('announcement').textContent=action.type==='TOGGLE_VIEW'?(state.view==='circuit'?'部品の回路と回路図':'製品'):action.type==='DISASSEMBLE'?'分解':action.type==='ASSEMBLE'?'組み立て':devices[state.device].name;
 }
 for(const b of document.querySelectorAll('[data-device]'))b.addEventListener('click',()=>act({type:'DEVICE',device:b.dataset.device}));
+const mechanismRoles={drive:'motor',suction:'fan',wing:'actuator',thrust:'valve'};
+for(const tab of document.querySelectorAll('[data-mechanism]'))tab.addEventListener('click',()=>{
+ const id=tab.dataset.mechanism,role=mechanismRoles[id];if(!role)return;
+ currentMechanism=id;
+ if(state.selected!==role)act({type:'SELECT',role});else syncMechanism();
+});
+$('mechanism-jump').addEventListener('click',()=>{$('mechanism-detail').scrollIntoView({behavior:reducedMotion?'instant':'smooth',block:'start'});$('mechanism-heading').focus({preventScroll:true});});
 $('disassemble').addEventListener('click',()=>act({type:state.view==='model'&&(state.direction>0||(state.direction===0&&state.progress>0))?'ASSEMBLE':'DISASSEMBLE'}));$('view-toggle').addEventListener('click',()=>act({type:'TOGGLE_VIEW'}));
 function activatePart(role){if(role==='switch'&&canOperate(state))act({type:'POWER'});else if(state.view==='circuit'||state.progress>0)act({type:'SELECT',role});}
 document.addEventListener('click',e=>{const el=e.target.closest('[data-part]');if(el)activatePart(el.dataset.part);});
@@ -170,6 +211,9 @@ function render(now){
   if(!state.direction){syncUI();updateSelection();$('announcement').textContent=state.progress===1?'分解完了':'戻りました';}
  }
  if(state.power&&canOperate(state)&&!reducedMotion){const model=activeModel();if(model.animate)model.animate(now/1000,dt,true);else for(const rotor of model.rotors||[])rotor.rotation[rotor.userData.axis||'y']+=dt*15;}
+ if(state.device==='roadster'&&state.view==='circuit'&&state.power&&!reducedMotion&&currentMechanism==='wing'){
+  mechanismTime+=dt;moveWingMechanism((1-Math.cos(mechanismTime*Math.PI/3))/2);
+ }
  controls.update();scene.updateMatrixWorld(true);
  const occupied=[];
  for(const {part,el,line}of labelEntries){
