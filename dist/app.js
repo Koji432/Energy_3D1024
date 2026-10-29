@@ -8,6 +8,7 @@ import {createController} from './models/controller.js';
 import {createVacuum} from './models/vacuum.js';
 import {circuitIcon,productIcon,deviceIcons,disassembleIcon,assembleIcon} from './icons.js';
 import {createDrone} from './models/drone.js';
+import {createRoadster} from './models/roadster.js';
 import {createCircuit,diagramMarkup} from './circuits.js';
 const $=id=>document.getElementById(id);
 for(const b of document.querySelectorAll('[data-device]'))b.innerHTML=deviceIcons[b.dataset.device];
@@ -29,7 +30,7 @@ scene.add(new THREE.HemisphereLight(0xffffff,0xa1b0c4,2.6));
 const key=new THREE.DirectionalLight(0xfff8ed,3.2);key.position.set(-6,12,10);key.castShadow=true;key.shadow.mapSize.set(2048,2048);Object.assign(key.shadow.camera,{left:-15,right:15,top:15,bottom:-15});key.shadow.normalBias=.04;scene.add(key);
 const fill=new THREE.DirectionalLight(0xd5e7ff,2);fill.position.set(7,4,-7);scene.add(fill);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(150,150),new THREE.ShadowMaterial({color:0x1d314b,opacity:.12}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
-const constructors={flashlight:createFlashlight,fan:createFan,cleaner:createCleaner,vacuum:createVacuum,controller:createController,drone:createDrone},models={},circuits={};
+const constructors={flashlight:createFlashlight,fan:createFan,cleaner:createCleaner,vacuum:createVacuum,controller:createController,drone:createDrone,roadster:createRoadster},models={},circuits={};
 function ensureModel(id){if(!models[id]){models[id]=constructors[id]();for(const p of models[id].parts)p.group.traverse(o=>{if(o.isMesh&&!o.userData.part)o.userData.part=o.userData.role||p.role;});scene.add(models[id].root);}return models[id];}
 function ensureCircuit(id){if(!circuits[id]){circuits[id]=createCircuit(id);scene.add(circuits[id].root);}return circuits[id];}
 function activeModel(){return state.view==='circuit'?ensureCircuit(state.device):ensureModel(state.device);}
@@ -60,7 +61,9 @@ function frameModel(){
  });
  center.addScaledVector(right,(minW+maxW)/2-center.dot(right));
  center.addScaledVector(up,(minH+maxH)/2-center.dot(up));
- const halfW=(maxW-minW)/2,halfH=(maxH-minH)/2;
+ const motionMargin=state.view==='model'&&state.progress===0?(active.motionHeight||0):0;
+ center.addScaledVector(up,motionMargin/2);
+ const halfW=(maxW-minW)/2,halfH=(maxH-minH)/2+motionMargin/2;
  const aspect=viewport.clientWidth/Math.max(1,viewport.clientHeight);
  const padding=state.view==='circuit'?1.29:state.progress>.1?1.23:1.17;
  const half=Math.max(halfH,halfW/aspect)*padding;
@@ -96,6 +99,7 @@ function updatePower(){
  const powered=canOperate(state)&&state.power;
  clearHighlights();
  for(const [id,model]of Object.entries(models))model.setPowered?.(powered&&state.view==='model'&&id===state.device);
+ for(const [id,circuit]of Object.entries(circuits))circuit.setPowered?.(powered&&state.view==='circuit'&&id===state.device);
  $('app').dataset.power=powered?'on':'off';
  document.body.classList.toggle('powered',powered);
  document.querySelectorAll('[data-part="switch"][role="switch"]').forEach(el=>el.setAttribute('aria-checked',String(powered)));
@@ -107,14 +111,16 @@ function updatePower(){
  c.root.traverse(o=>{if(o.userData.lever){if(o.userData.offX===undefined)o.userData.offX=o.position.x;o.position.x=o.userData.offX+(powered?.24:0);}});
  updateSelection();
 }
-const partColors={source:'#dc9735',switch:'#47799c',resistor:'#bb6546',led:'#cfad23',motor:'#647f94',controller:'#379566'};
+const partColors={source:'#dc9735',switch:'#47799c',resistor:'#bb6546',led:'#cfad23',motor:'#647f94',controller:'#379566',fan:'#647f94',actuator:'#647f94',valve:'#b67c27',tank:'#b67c27',thruster:'#b67c27'};
 function buildDiagram(){
  $('schematic').innerHTML=diagramMarkup(state.device);
+ $('schematic').setAttribute('viewBox',state.device==='roadster'?'0 0 640 650':'0 0 640 560');
  $('part-buttons').replaceChildren();
- for(const role of devices[state.device].roles){if(role==='switch')continue;const b=document.createElement('button');b.className='part-button';b.dataset.part=role;b.textContent=partNames[role];b.setAttribute('aria-pressed','false');b.style.setProperty('--part-color',partColors[role]||'#647f94');$('part-buttons').append(b);}
+ for(const role of devices[state.device].roles){if(role==='switch')continue;const b=document.createElement('button');b.className='part-button';b.dataset.part=role;b.textContent=devices[state.device].partNames?.[role]||partNames[role];b.setAttribute('aria-pressed','false');b.style.setProperty('--part-color',partColors[role]||'#647f94');$('part-buttons').append(b);}
 }
 function syncUI(){
- document.body.classList.toggle('circuit-view',state.view==='circuit');document.body.classList.toggle('drone-view',state.device==='drone');
+ document.body.classList.toggle('circuit-view',state.view==='circuit');document.body.classList.toggle('drone-view',state.device==='drone');document.body.classList.toggle('roadster-view',state.device==='roadster');
+ $('model-title').textContent=state.device==='roadster'?'部品と機構':'部品の回路';$('diagram-panel').querySelector('h2').textContent=state.device==='roadster'?'回路・機構図':'回路図';
  $('view-toggle').innerHTML=state.view==='circuit'?productIcon:circuitIcon;
  $('view-toggle').setAttribute('aria-label',state.view==='circuit'?'電気製品を表示':'電気回路を表示');$('view-toggle').setAttribute('aria-pressed',String(state.view==='circuit'));
  $('diagram-panel').hidden=state.view!=='circuit';$('model-title').hidden=state.view!=='circuit';$('part-buttons').hidden=state.view!=='circuit';
@@ -163,7 +169,7 @@ function render(now){
   const next=animationStep(state.progress,state.direction,elapsed,reducedMotion?.01:3.4);state.progress=next.value;state.direction=next.direction;showActive();frameModel();
   if(!state.direction){syncUI();updateSelection();$('announcement').textContent=state.progress===1?'分解完了':'戻りました';}
  }
- if(state.power&&canOperate(state)&&!reducedMotion){const model=activeModel();if(state.view==='model'&&model.animate)model.animate(now/1000,dt,true);else for(const rotor of model.rotors||[])rotor.rotation[rotor.userData.axis||'y']+=dt*15;}
+ if(state.power&&canOperate(state)&&!reducedMotion){const model=activeModel();if(model.animate)model.animate(now/1000,dt,true);else for(const rotor of model.rotors||[])rotor.rotation[rotor.userData.axis||'y']+=dt*15;}
  controls.update();scene.updateMatrixWorld(true);
  const occupied=[];
  for(const {part,el,line}of labelEntries){

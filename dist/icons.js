@@ -8,6 +8,7 @@ export const deviceIcons={
  vacuum:svg('<circle cx="24" cy="24" r="20"/><circle cx="24" cy="24" r="15"/><circle cx="24" cy="23" r="7"/><path d="M24 19v4m-3-2a4 4 0 1 0 6 0M11 36c8 5 18 5 26-2M19 40h10"/>'),
  controller:svg('<path d="M14 11c-5-2-8 3-10 12L2 35c0 6 5 9 9 3l6-8h14l6 8c4 6 9 3 9-3l-2-12c-2-9-5-14-10-12Z"/><circle cx="13" cy="19" r="4"/><circle cx="29" cy="27" r="4"/><path d="M14 25v9m-5-5h10M24 14v3"/><circle cx="35" cy="16" r="1"/><circle cx="39" cy="20" r="1"/><circle cx="31" cy="20" r="1"/><circle cx="35" cy="24" r="1"/>'),
  drone:svg('<rect x="18" y="17" width="12" height="15" rx="4"/><path d="m18 18-9-8m21 8 9-8M18 31l-9 8m21-8 9 8"/><ellipse cx="8" cy="9" rx="7" ry="3"/><ellipse cx="40" cy="9" rx="7" ry="3"/><ellipse cx="8" cy="39" rx="7" ry="3"/><ellipse cx="40" cy="39" rx="7" ry="3"/>'),
+ roadster:svg('<path d="m4 29 4-8 10-7h13l8 8 5 3v9H4Zm4-8 30 1M18 14l-3 8m14-8 6 8M4 34h5m9 0h13m9 0h4M2 16h9m-6 0v6M8 28h5m23 0h5"/><circle cx="13" cy="34" r="5"/><circle cx="36" cy="34" r="5"/><path d="M15 42v4m-3-2 3 2 3-2M34 42v4m-3-2 3 2 3-2"/>'),
 };
 export const disassembleIcon=svg('<path d="m24 5 18 9-18 10L6 14 24 5ZM6 23l18 10 18-10M6 33l18 10 18-10"/>');
 export const assembleIcon=svg('<path d="M6 29 24 39l18-10M6 20l18 10 18-10M24 25V5m-7 7 7-7 7 7"/>');

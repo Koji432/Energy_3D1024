@@ -36,6 +36,7 @@ export function createCircuit(deviceId) {
   const root = new THREE.Group();
   root.name = `${deviceId}-circuit`;
   const parts = [], rotors = [], ledMeshes = [];
+  const hooks = {};
   const materials = {
     red: mat(0xe45c4a), black: mat(0x273e4b), metal: mat(0xd6e1e4, .8, .24),
     dark: mat(0x273646), blue: mat(0x2589be), gold: mat(0xe6ac3a, .5, .3),
@@ -175,7 +176,124 @@ export function createCircuit(deviceId) {
     return group;
   }
 
-  if (deviceId === 'drone' || deviceId === 'controller' || deviceId === 'vacuum') {
+  if (deviceId === 'roadster') {
+    root.userData.electricalRoles = ['source', 'switch', 'controller', 'motor', 'fan', 'actuator', 'valve'];
+    root.userData.electricalLoads = ['motor', 'fan', 'actuator', 'valve'];
+    root.userData.gasRoles = ['tank', 'valve', 'thruster'];
+    root.userData.architecture = 'simplified-electric-controls-and-separate-gas-path';
+    const electric = points => {
+      const line = cable(points);
+      line.name = 'electric-wire'; line.userData.medium = 'electric'; return line;
+    };
+    const negative = points => {
+      const line = cable(points, 'black');
+      line.name = 'electric-return'; line.userData.medium = 'electric'; return line;
+    };
+    const orange = mat(0xdd8d37, .24, .42);
+    function gasPipe(points) {
+      const group = new THREE.Group(); group.name = 'gas-pipe'; group.userData.medium = 'gas'; root.add(group);
+      for (let i = 1; i < points.length; i++) {
+        const a = V(points[i - 1][0], .075, points[i - 1][1]);
+        const b = V(points[i][0], .075, points[i][1]);
+        const length = a.distanceTo(b);
+        for (let d = 0; d < length; d += .25) {
+          const start = a.clone().lerp(b, d / length), end = a.clone().lerp(b, Math.min(d + .15, length) / length);
+          const dash = wire(group, [start.toArray(), end.toArray()], orange, .033);
+          dash.userData.medium = 'gas';
+        }
+      }
+    }
+    function mediumLabel(text, color, x, z) {
+      if (typeof document === 'undefined') return;
+      const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 96;
+      const ctx = canvas.getContext('2d'); ctx.font = 'bold 58px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = color; ctx.fillText(text, 128, 48);
+      const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+      sprite.position.set(x, .43, z); sprite.scale.set(1.2, .45, 1); sprite.name = `${text}-label`; root.add(sprite);
+    }
+
+    battery(-3.55, 0, true);
+    slideSwitch(-2.1, -2.3);
+    const board = part('controller', '制御基板', -.4, -2.3, V(0, .8, -.15));
+    box(board, [1.13, .12, .73], materials.green, [0, .25, 0]);
+    box(board, [.39, .16, .35], materials.dark, [0, .39, 0]);
+    for (let i = 0; i < 5; i++) {
+      box(board, [.035, .04, .15], materials.metal, [-.24 + i * .12, .34, -.26]);
+      box(board, [.035, .04, .15], materials.metal, [-.24 + i * .12, .34, .26]);
+    }
+    electric([[-3.55, -.88], [-3.55, -2.3], [-2.6, -2.3]]);
+    electric([[-1.6, -2.3], [-.965, -2.3]]);
+    electric([[.165, -2.3], [3.5, -2.3], [3.5, -1.2], [-.9, -1.2]]);
+    negative([[-3.55, .88], [-3.55, 1.3], [3.5, 1.3]]);
+
+    motor('motor', '走行モーター', -.9, -.1, false, 'wheel');
+    electric([[-.9, -1.2], [-.9, -.72]]); negative([[-.9, .52], [-.9, 1.3]]);
+
+    const fans = part('fan', '吸引ファン', .6, -.1, V(0, 1.0, .1));
+    box(fans, [1.18, .09, 1.18], materials.dark, [0, .18, 0]);
+    for (const x of [-.3, .3]) for (const z of [-.3, .3]) {
+      const duct = mesh(fans, new THREE.TorusGeometry(.255, .035, 10, 36), materials.metal, [x, .42, z]); duct.rotation.x = Math.PI / 2;
+      cylinder(fans, .1, .16, materials.blue, [x, .29, z]);
+      const rotor = new THREE.Group(); rotor.position.set(x, .42, z); rotor.userData.axis = 'y'; rotor.userData.kind = 'suction-fan'; fans.add(rotor); rotors.push(rotor);
+      for (let i = 0; i < 3; i++) {
+        const blade = new THREE.Group(); blade.rotation.y = i * Math.PI * 2 / 3; rotor.add(blade);
+        box(blade, [.21, .028, .07], materials.blade, [.12, 0, 0]);
+      }
+      cylinder(rotor, .07, .06, materials.copper, [0, .01, 0]);
+    }
+    wire(fans, [[0, y, -.7], [0, y, -.56]], materials.metal, .03);
+    wire(fans, [[0, y, .56], [0, y, .7]], materials.metal, .03);
+    electric([[.6, -1.2], [.6, -.8]]); negative([[.6, .6], [.6, 1.3]]);
+
+    const actuator = part('actuator', '翼の駆動部', 2.0, -.1, V(0, 1.45, .05));
+    box(actuator, [.6, .2, .68], materials.dark, [0, .24, 0]);
+    cylinder(actuator, .22, .46, materials.metal, [0, .51, 0]);
+    const piston = cylinder(actuator, .075, .42, materials.metal, [0, .84, 0]);
+    const wing = box(actuator, [1.0, .075, .25], materials.blue, [0, 1.06, 0]);
+    wire(actuator, [[0, y, -.62], [-.19, .26, -.28]], materials.metal, .03);
+    wire(actuator, [[.19, .26, .28], [0, y, .62]], materials.metal, .03);
+    electric([[2.0, -1.2], [2.0, -.72]]); negative([[2.0, .52], [2.0, 1.3]]);
+
+    // The valve's motor receives electricity; its separate side ports carry gas.
+    const valve = part('valve', '電動バルブ', 3.5, -.1, V(.05, 1.05, .05));
+    box(valve, [.62, .24, .45], materials.copper, [0, .19, 0]);
+    for (const x of [-.38, .38]) {
+      const port = cylinder(valve, .12, .21, orange, [x, .19, 0]); port.rotation.z = Math.PI / 2;
+    }
+    box(valve, [.4, .12, .36], materials.dark, [0, .37, 0]);
+    cylinder(valve, .18, .32, materials.metal, [0, .59, 0]);
+    const valvePosition = box(valve, [.31, .045, .075], materials.blue, [0, .79, 0]);
+    wire(valve, [[0, y, -.62], [-.15, .39, -.18]], materials.metal, .03);
+    wire(valve, [[.15, .39, .18], [0, y, .62]], materials.metal, .03);
+    electric([[3.5, -1.2], [3.5, -.72]]); negative([[3.5, .52], [3.5, 1.3]]);
+
+    const tank = part('tank', 'ガスタンク', -2.7, 2.85, V(0, .95, .1));
+    const vessel = cylinder(tank, .32, 1.3, materials.metal, [0, .42, 0]); vessel.rotation.z = Math.PI / 2;
+    for (const x of [-.65, .65]) {
+      const end = mesh(tank, new THREE.SphereGeometry(.32, 24, 16), materials.metal, [x, .42, 0]); end.scale.x = .35;
+    }
+    for (const x of [-.36, .36]) {
+      const strap = mesh(tank, new THREE.TorusGeometry(.326, .035, 8, 32), materials.dark, [x, .42, 0]); strap.rotation.y = Math.PI / 2;
+    }
+    const tankPort = cylinder(tank, .1, .23, orange, [.85, .42, 0]); tankPort.rotation.z = Math.PI / 2;
+    wire(tank, [[.96, .42, 0], [.96, .075, 0]], orange, .033).userData.medium = 'gas';
+
+    const nozzle = part('thruster', 'ノズル', 4.2, 2.85, V(.05, .9, .25));
+    const mouth = mesh(nozzle, new THREE.CylinderGeometry(.1, .32, .65, 36, 1, true), new THREE.MeshStandardMaterial({ color: 0xb5c3c8, metalness: .8, roughness: .28, side: THREE.DoubleSide }), [0, .25, 0]); mouth.rotation.x = -Math.PI / 2;
+    const throat = cylinder(nozzle, .105, .18, materials.dark, [0, .25, -.4]); throat.rotation.x = Math.PI / 2;
+    wire(nozzle, [[0, .075, -.5], [0, .25, -.5]], orange, .033).userData.medium = 'gas';
+    const plume = mesh(nozzle, new THREE.CylinderGeometry(.34, .06, .85, 28, 1, true), new THREE.MeshBasicMaterial({ color: 0xf1f7fa, transparent: true, opacity: .45, depthWrite: false, side: THREE.DoubleSide }), [0, .25, .78]); plume.rotation.x = Math.PI / 2; plume.visible = false; plume.name = 'gas-flow'; plume.userData.medium = 'gas';
+    gasPipe([[-1.74, 2.85], [2.8, 2.85], [2.8, -.1], [3.02, -.1]]);
+    gasPipe([[3.98, -.1], [4.2, -.1], [4.2, 2.35]]);
+    mediumLabel('電気', '#287db0', -3.2, -2.8); mediumLabel('ガス', '#b96e1e', -.3, 2.85);
+    hooks.setPowered = on => {
+      const powered = Boolean(on); root.userData.powered = powered;
+      valvePosition.rotation.y = powered ? Math.PI / 2 : 0;
+      piston.position.y = powered ? 1.02 : .84; wing.position.y = powered ? 1.24 : 1.06;
+      plume.visible = powered;
+    };
+    hooks.setPowered(false);
+  } else if (deviceId === 'drone' || deviceId === 'controller' || deviceId === 'vacuum') {
     const vibration = deviceId === 'controller';
     const vacuum = deviceId === 'vacuum';
     const motorPositions = vacuum ? [-.4, 1.3, 3] : vibration ? [.45, 2.85] : [-.75, .55, 1.85, 3.15];
@@ -225,7 +343,7 @@ export function createCircuit(deviceId) {
   for (const { group, role } of parts) {
     group.traverse(object => { if (object.isMesh) object.userData.part = role; });
   }
-  return { root, parts, rotors, ledMeshes, focus: V(0, .25, 0) };
+  return { root, parts, rotors, ledMeshes, focus: V(0, .25, 0), ...hooks };
 }
 
 const label = (text, x, y, size = 28) => `<text class="symbol-label" x="${x}" y="${y}" text-anchor="middle" fill="currentColor" stroke="none" style="font-size:${size}px" font-family="sans-serif">${text}</text>`;
@@ -253,10 +371,39 @@ function motorSymbol(id, name, x, cy, radius = 42, textY = cy + 91, fontSize = 2
   return symbol(id,name,`${hit(left,cy-radius-13,right-left,height)}<circle cx="${x}" cy="${cy}" r="${radius}"/><text x="${x}" y="${cy+(motorFont===30?10:13)}" text-anchor="middle" fill="currentColor" stroke="none" style="font-size:${motorFont}px" font-family="sans-serif">${motorText}</text>${numbered?'':label(name,textX,textY,fontSize)}`);
 }
 
-/** SVG children only. The caller supplies the 640 × 560 outer SVG. */
+function roadsterDiagramMarkup() {
+  const loadLabel = (top, bottom, x) => `<text class="symbol-label" x="${x}" y="465" text-anchor="middle" fill="currentColor" stroke="none" style="font-size:22px" font-family="sans-serif">${top}<tspan x="${x}" dy="26">${bottom}</tspan></text>`;
+  // Four control-driven electrical branches; the pneumatic ports never join a wire.
+  let content = `<g data-medium="electric"><path class="wire" d="M125 290V90H190M250 90H305M425 90H545V190H275M125 310V425H545"/>`;
+  for (const x of [275, 365, 455, 545]) {
+    content += `<path class="wire" d="M${x} 190V254M${x} 316V425"/><circle class="wire" cx="${x}" cy="190" r="4" fill="currentColor"/><circle class="wire" cx="${x}" cy="425" r="4" fill="currentColor"/>`;
+  }
+  content += '</g>';
+  const inlet = 'M180 550H493V285H525', outlet = 'M565 285H605V515';
+  // The white clearance at the crossing means the orange pipe passes over the wire.
+  content += `<g class="gas-pipes" data-medium="gas" stroke="#ca7c25"><path class="gas-clearance" d="${inlet} ${outlet}" stroke="#fff" stroke-width="14"/><path class="gas-path" d="${inlet} ${outlet}" stroke-dasharray="10 8" stroke-width="5"/></g>`;
+  content += sourceSymbol(false, 300) + switchSymbol(190, 250, 220);
+  content += symbol('controller', '制御基板', `${hit(285, 42, 160, 116)}<rect x="305" y="64" width="120" height="52" rx="3"/>${label('制御基板', 365, 151)}`);
+  content += symbol('motor', '走行モーター', `${hit(228, 238, 94, 260)}<circle cx="275" cy="285" r="31"/><text x="275" y="298" text-anchor="middle" fill="currentColor" stroke="none" style="font-size:38px" font-family="sans-serif">M</text>${loadLabel('走行', 'モーター', 275)}`);
+  let fanDrawing = '<rect x="335" y="254" width="60" height="62" rx="6"/>';
+  for (const x of [351, 379]) for (const y of [270, 299]) fanDrawing += `<circle cx="${x}" cy="${y}" r="10"/><path d="M${x - 6} ${y}H${x + 6}M${x} ${y - 6}V${y + 6}" stroke-width="3"/>`;
+  content += symbol('fan', '吸引ファン', `${hit(323, 238, 84, 260)}${fanDrawing}${loadLabel('吸引', 'ファン', 365)}`);
+  content += symbol('actuator', '翼の駆動部', `${hit(413, 238, 84, 260)}<rect x="440" y="267" width="30" height="49" rx="2"/><path d="M455 254V288M445 288H465M440 254H470"/>${loadLabel('翼の', '駆動部', 455)}`);
+  content += symbol('valve', '電動バルブ', `${hit(503, 238, 84, 260)}<rect x="525" y="254" width="40" height="62" rx="4"/><path d="M535 264H555M535 274H555M530 285L560 305V282L530 305Z" stroke-width="3"/>${loadLabel('電動', 'バルブ', 545)}`);
+  content += `<g class="gas-components" color="#b76e1f" stroke="#b76e1f" data-medium="gas">`;
+  content += symbol('tank', 'ガスタンク', `${hit(57, 505, 141, 125)}<rect x="70" y="520" width="110" height="60" rx="28"/><path d="M92 522V578M158 522V578" stroke-width="3"/>${label('ガスタンク', 125, 620, 26)}`);
+  content += symbol('thruster', 'ノズル', `${hit(489, 501, 144, 137)}<path d="M596 515H614L628 571H582Z"/><path d="M583 571H627"/>${label('ノズル', 540, 628, 26)}`);
+  content += `<g class="gas-flow" opacity="0" stroke="#b8ccd3" stroke-width="4"><path d="M597 582V615M597 615L590 605M597 615L604 605M613 582V615M613 615L606 605M613 615L620 605"/></g></g>`;
+  content += `<text x="80" y="39" fill="#287db0" stroke="none" style="font-size:26px" font-family="sans-serif">電気</text><text x="305" y="535" text-anchor="middle" fill="#b76e1f" stroke="none" style="font-size:28px" font-family="sans-serif">ガス</text><text x="320" y="643" text-anchor="middle" fill="#71808a" stroke="none" style="font-size:18px" font-family="sans-serif">模式図</text>`;
+  return content;
+}
+
+/** SVG children only. Outer viewBox: 640 × 650 for Roadster, 640 × 560 otherwise. */
 export function diagramMarkup(deviceId) {
   let content;
-  if (deviceId === 'drone') {
+  if (deviceId === 'roadster') {
+    content = roadsterDiagramMarkup();
+  } else if (deviceId === 'drone') {
     content = `<path class="wire" d="M125 290V90H190M250 90H305M425 90H535V200H280M125 310V420H535"/>`;
     content += sourceSymbol(false, 300) + switchSymbol(190, 250, 220);
     content += symbol('controller', '制御基板', `${hit(285, 42, 160, 116)}<rect x="305" y="64" width="120" height="52" rx="3"/>${label('制御基板', 365, 151)}`);

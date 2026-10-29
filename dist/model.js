@@ -8,8 +8,9 @@ export const devices = {
   vacuum: {name:'自動掃除機', roles:['source','switch','controller','motor1','motor2','motor3']},
   controller: {name:'コントローラー', roles:['source','switch','controller','motor1','motor2']},
   drone: {name:'ドローン', roles:['source','switch','controller','motor1','motor2','motor3','motor4']},
+  roadster: {name:'ロードスター', roles:['source','switch','controller','motor','fan','actuator','valve','tank','thruster'],partNames:{motor:'走行モーター'}},
 };
-export const partNames={source:'電源',switch:'スイッチ',resistor:'抵抗',led:'LED',motor:'モーター',controller:'制御基板',motor1:'モーター1',motor2:'モーター2',motor3:'モーター3',motor4:'モーター4'};
+export const partNames={source:'電源',switch:'スイッチ',resistor:'抵抗',led:'LED',motor:'モーター',controller:'制御基板',motor1:'モーター1',motor2:'モーター2',motor3:'モーター3',motor4:'モーター4',fan:'吸引ファン',actuator:'翼の駆動部',valve:'電動バルブ',tank:'ガスタンク',thruster:'ノズル'};
 export const canOperate = state => state.view==='circuit'||(state.view==='model'&&state.progress===0&&state.direction===0);
 export const initialState = () => ({device:'flashlight',view:'model',progress:0,direction:0,power:false,selected:null});
 export function transition(state, action) {
