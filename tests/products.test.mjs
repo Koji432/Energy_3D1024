@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import * as THREE from '../dist/vendor/three.module.js';
 const threeURL=new URL('../dist/vendor/three.module.js',import.meta.url).href;
-async function loadFactory(id,name){const source=(await readFile(new URL(`../dist/models/${id}.js`,import.meta.url),'utf8')).replace("from 'three'",`from '${threeURL}'`);const module=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);return module[name]();}
+const wiringSource=(await readFile(new URL('../dist/models/exploded-wiring.js',import.meta.url),'utf8')).replace("from 'three'",`from '${threeURL}'`);
+const wiringURL=`data:text/javascript;base64,${Buffer.from(wiringSource).toString('base64')}`;
+async function loadFactory(id,name){const source=(await readFile(new URL(`../dist/models/${id}.js`,import.meta.url),'utf8')).replace("from 'three'",`from '${threeURL}'`).replace("from './exploded-wiring.js'",`from '${wiringURL}'`);const module=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);return module[name]();}
 function snapshot(root){const out=[];root.traverse(o=>{out.push(...o.position.toArray(),...o.quaternion.toArray(),o.visible?1:0,o.material?.emissiveIntensity??0,o.intensity??0);});return out;}
 for(const [id,name]of [['flashlight','createFlashlight'],['fan','createFan'],['cleaner','createCleaner'],['vacuum','createVacuum'],['controller','createController'],['drone','createDrone'],['roadster','createRoadster']]){
  test(`${id}: exposed switch receives clicks, power acts, off stops motion`,async()=>{

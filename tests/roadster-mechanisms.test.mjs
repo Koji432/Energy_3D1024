@@ -1,65 +1,142 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mechanisms, mechanismForRole, mechanismMarkup } from '../dist/roadster-mechanisms.js';
+import {mechanisms,mechanismIcons,driveKinematics,mechanismForRole,mechanismMarkup} from '../dist/roadster-mechanisms.js';
 
-const mechanismIds = ['drive', 'suction', 'wing', 'thrust'];
-const roleMapping = { motor: 'drive', fan: 'suction', actuator: 'wing', valve: 'thrust', tank: 'thrust', thruster: 'thrust' };
-const attribute = (tag, name) => tag.match(new RegExp(`(?:^|\\s)${name}=["']([^"']*)["']`))?.[1];
+const ids=['drive','suction','wing','thrust'];
+const attribute=(tag,name)=>tag.match(new RegExp(`(?:^|\\s)${name}=["']([^"']*)["']`))?.[1];
+const target=(svg,id)=>[...svg.matchAll(/<(?:g|path)\b[^>]*\bdata-motion="([^"]+)"[^>]*>/g)].find(m=>m[1]===id)?.[0];
+const rotations={
+  drive:['drive-field','drive-motor','drive-sun','drive-carrier','drive-planet-0','drive-planet-1','drive-planet-2','drive-wheel'],
+  suction:['suction-fan-0','suction-fan-1','suction-fan-2','suction-fan-3'],
+  wing:['wing-motor','link','wing'],
+  thrust:['thrust-motor'],
+};
+function assertNoVisibleText(svg,label) {
+  assert.doesNotMatch(svg,/<(?:text|tspan|foreignObject)\b/i,`${label} contains visible text`);
+  const visible=svg.replace(/<(title|desc)\b[^>]*>[\s\S]*?<\/\1>/g,'').replace(/<[^>]+>/g,'').trim();
+  assert.equal(visible,'',`${label} has a visible text node`);
+}
+function assertLocalResources(svg,label) {
+  assert.doesNotMatch(svg,/<(?:image|script|animate|animateTransform|set)\b/i,`${label} must use local vector drawing and host-controlled motion`);
+  for(const ref of svg.matchAll(/(?:href|src)=["']([^"']*)["']/g)) assert.ok(ref[1].startsWith('#'),`${label} uses an external resource`);
+  assert.doesNotMatch(svg,/url\(\s*["']?(?:https?:|data:|\/)|@import\b/i);
+  const declared=new Set([...svg.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]));
+  for(const ref of svg.matchAll(/url\(#([^)]+)\)/g)) assert.ok(declared.has(ref[1]),`${label} references missing ${ref[1]}`);
+}
 
-test('mechanisms provide four distinct topics with a title and two concise explanations', () => {
-  assert.deepEqual(Object.keys(mechanisms).sort(), [...mechanismIds].sort());
-  const titles = new Set();
-  for (const id of mechanismIds) {
-    const mechanism = mechanisms[id];
-    assert.equal(mechanism.id, id);
-    assert.ok(typeof mechanism.title === 'string' && mechanism.title.trim(), `${id} has no title`);
-    assert.equal(mechanism.caption.length, 2, `${id} must explain its mechanism in two lines`);
-    for (const line of mechanism.caption) assert.ok(typeof line === 'string' && line.trim(), `${id} has an empty explanation`);
-    titles.add(mechanism.title);
+test('four icon-only mechanism topics keep explanations in inaccessible-to-layout metadata',()=>{
+  assert.deepEqual(Object.keys(mechanisms).sort(),[...ids].sort());
+  assert.deepEqual(Object.keys(mechanismIcons).sort(),[...ids].sort());
+  const titles=new Set();
+  for(const id of ids) {
+    const item=mechanisms[id];
+    assert.equal(item.id,id);
+    assert.ok(item.title?.trim());
+    assert.match(item.description,/模式図/);
+    assert.equal(item.caption,undefined,'Caption metadata can reintroduce visible explanation text');
+    assert.equal(item.flow,undefined,'Flow metadata can reintroduce a visible text list');
+    titles.add(item.title);
+    const icon=mechanismIcons[id];
+    assert.match(icon,/^<svg\b[\s\S]*<\/svg>$/);
+    assert.match(icon,/aria-hidden="true"/);
+    assertNoVisibleText(icon,`${id} tab icon`);
+    assertLocalResources(icon,`${id} tab icon`);
   }
-  assert.equal(titles.size, mechanismIds.length, 'Each mechanism needs a distinct topic');
+  assert.equal(titles.size,4);
 });
 
-test('selecting a mechanism part opens its matching topic and shared parts preserve the current topic', () => {
-  for (const [role, expected] of Object.entries(roleMapping)) {
-    for (const current of [...mechanismIds, 'unknown']) assert.equal(mechanismForRole(role, current), expected, `${role}, ${current}`);
-  }
-  for (const role of ['source', 'switch', 'controller', null, undefined, '', 'unknown', 'constructor', '__proto__']) {
-    for (const current of mechanismIds) assert.equal(mechanismForRole(role, current), current, `${role}, ${current}`);
-    assert.equal(mechanismForRole(role), 'drive');
-    for (const current of [null, '', 'unknown', 'constructor', '__proto__']) assert.equal(mechanismForRole(role, current), 'drive', `${role}, invalid ${current}`);
+test('mechanism selection maps dedicated parts and safely preserves shared-part context',()=>{
+  const mapping={motor:'drive',fan:'suction',actuator:'wing',valve:'thrust',tank:'thrust',thruster:'thrust'};
+  for(const [role,expected] of Object.entries(mapping)) for(const current of [...ids,'unknown']) assert.equal(mechanismForRole(role,current),expected);
+  for(const role of ['source','switch','controller',null,undefined,'','unknown','constructor','__proto__']) {
+    for(const current of ids) assert.equal(mechanismForRole(role,current),current);
+    for(const current of [undefined,null,'','unknown','constructor','__proto__']) assert.equal(mechanismForRole(role,current),'drive');
   }
 });
 
-test('each cutaway is an accessible, nonempty, self-contained SVG', () => {
-  const diagrams = new Set();
-  for (const id of mechanismIds) {
-    const markup = mechanismMarkup(id);
-    assert.equal(typeof markup, 'string');
-    assert.match(markup, /^\s*<svg\b[\s\S]*<\/svg>\s*$/, `${id} is not a standalone SVG`);
-    const root = markup.match(/<svg\b[^>]*>/)[0];
-    assert.equal(attribute(root, 'role'), 'img', `${id} must expose an image role`);
-    const viewBox = attribute(root, 'viewBox')?.trim().split(/[\s,]+/).map(Number);
-    assert.equal(viewBox?.length, 4, `${id} needs a scalable viewBox`);
-    assert.ok(viewBox.every(Number.isFinite) && viewBox[2] > 0 && viewBox[3] > 0);
-    const labelledBy = attribute(root, 'aria-labelledby')?.trim().split(/\s+/);
-    assert.ok(labelledBy?.length, `${id} needs an accessible label`);
-    const descriptions = [...markup.matchAll(/<(title|desc)\b([^>]*)>([\s\S]*?)<\/(?:title|desc)>/g)];
-    assert.ok(descriptions.some(match => match[1] === 'title' && match[3].trim()), `${id} needs a title`);
-    assert.ok(descriptions.some(match => match[1] === 'desc' && match[3].trim()), `${id} needs a description`);
-    for (const referencedId of labelledBy) {
-      assert.ok(descriptions.some(match => attribute(match[2], 'id') === referencedId && match[3].trim()), `${id} has an unresolved accessible label: ${referencedId}`);
+test('each scene has no visible text and remains a self-contained accessible SVG',()=>{
+  const scenes=new Set();
+  for(const id of ids) {
+    const svg=mechanismMarkup(id),root=svg.match(/^<svg\b[^>]*>/)?.[0];
+    assert.ok(root,`${id} lacks a root SVG`);
+    assert.equal(attribute(root,'role'),'img');
+    assert.equal(attribute(root,'viewBox'),'0 0 1000 360');
+    assert.equal(attribute(root,'aria-label'),`${mechanisms[id].title}の機構`);
+    assert.equal(attribute(root,'aria-labelledby'),undefined);
+    const descriptions=attribute(root,'aria-describedby')?.split(/\s+/);
+    assert.equal(descriptions?.length,1);
+    for(const ref of descriptions) assert.match(svg,new RegExp(`<desc id="${ref}">[^<]+<\\/desc>`));
+    assert.doesNotMatch(svg,/<title\b/i,'SVG titles can create visible native hover tooltips');
+    assertNoVisibleText(svg,id);
+    assertLocalResources(svg,id);
+    assert.match(svg,/<(?:path|rect|circle|ellipse)\b/);
+    const targets=[...svg.matchAll(/\bdata-motion="([^"]+)"/g)].map(m=>m[1]);
+    assert.equal(new Set(targets).size,targets.length,`${id} has duplicate motion targets`);
+    for(const name of rotations[id]) {
+      const tag=target(svg,name);
+      assert.ok(tag,`${id} lacks ${name}`);
+      for(const attr of ['data-cx','data-cy']) assert.ok(Number.isFinite(Number(attribute(tag,attr))),`${name} lacks a finite pivot`);
     }
-    assert.match(markup, /<(?:path|rect|circle|ellipse|polygon|polyline|line)\b/, `${id} has no drawing`);
-    assert.doesNotMatch(markup, /<(?:image|foreignObject|script)\b/i, `${id} must render without embedded images or executable content`);
-    for (const reference of markup.matchAll(/(?:href|src)=["']([^"']*)["']/g)) assert.ok(reference[1].startsWith('#'), `${id} depends on an external asset: ${reference[1]}`);
-    assert.doesNotMatch(markup, /(?:url\(\s*["']?(?:https?:|data:|\/)|@import\b)/i, `${id} depends on an external stylesheet or image`);
-    diagrams.add(markup);
+    assert.doesNotMatch(svg,/class="mechanism-(?:spin|counter-spin|spin-slow|slide)"/,'Host-controlled transforms must not also have an independent CSS motion');
+    scenes.add(svg);
   }
-  assert.equal(diagrams.size, mechanismIds.length, 'The four topics must not reuse one placeholder drawing');
+  assert.equal(scenes.size,4);
 });
 
-test('an unknown mechanism produces the drive diagram instead of an empty inspector', () => {
-  const drive = mechanismMarkup('drive');
-  for (const id of [undefined, null, '', 'unknown', 'constructor', '__proto__']) assert.equal(mechanismMarkup(id), drive, `Unknown mechanism ${id}`);
+test('fixed-ring reduction has coherent pitch radii and relative planetary motion',()=>{
+  const k=driveKinematics;
+  assert.equal(k.ringTeeth,k.sunTeeth+2*k.planetTeeth);
+  assert.equal(k.ringRadius,k.sunRadius+2*k.planetRadius);
+  assert.equal(k.sunRadius/k.sunTeeth,k.planetRadius/k.planetTeeth);
+  assert.equal(k.sunRadius/k.sunTeeth,k.ringRadius/k.ringTeeth);
+  assert.equal(k.orbitRadius,k.sunRadius+k.planetRadius);
+  assert.equal(k.carrierRatio,k.sunTeeth/(k.sunTeeth+k.ringTeeth));
+  assert.ok(Math.abs(k.planetRelativeRatio+k.sunTeeth/k.planetTeeth*(1-k.carrierRatio))<1e-12);
+  for(const center of k.planetCenters) assert.ok(Math.abs(Math.hypot(center.x-k.gearCenter.x,center.y-k.gearCenter.y)-k.orbitRadius)<1e-10);
+  const svg=mechanismMarkup('drive');
+  assert.match(svg,/data-fixed="stator"/);
+  assert.match(svg,/data-fixed="ring"/);
+  for(const stage of ['battery','inverter','motor','reduction']) assert.match(svg,new RegExp(`data-stage="${stage}"`));
+  assert.ok(target(svg,'drive-electric'));
+  assert.ok(target(svg,'drive-road'));
+  assert.equal([...svg.matchAll(/class="mechanism-coil-phase"/g)].length,6);
+  assert.match(mechanisms.drive.description,/かご形/);
+  assert.match(mechanisms.drive.description,/個別車両.*再現していない/);
+});
+
+test('suction presses only the chassis down while the wheels remain on fixed ground',()=>{
+  const svg=mechanismMarkup('suction');
+  assert.equal(Number(attribute(target(svg,'suction-body'),'data-travel')),8);
+  assert.match(svg,/data-fixed="wheels"/);
+  for(const name of ['suction-air','suction-pressure','suction-force']) assert.ok(target(svg,name));
+  assert.equal([...svg.matchAll(/data-motion="suction-fan-[0-3]"/g)].length,4);
+  assert.match(svg,/class="mechanism-airflow mechanism-side-inlet"/);
+  assert.match(mechanisms.suction.description,/浮上ではない/);
+});
+
+test('wing conversion retains connected slider-crank geometry for the host pose helper',()=>{
+  const svg=mechanismMarkup('wing');
+  for(const name of ['wing-motor','wing-thread','rod','link','wing']) assert.ok(target(svg,name));
+  const rod=target(svg,'rod'),link=target(svg,'link'),pivot=target(svg,'wing');
+  assert.equal(Number(attribute(rod,'data-reference-y')),213);
+  assert.equal(Number(attribute(link,'data-length')),70);
+  const rodX=Number(attribute(rod,'data-reference-x'));
+  assert.ok(Math.abs(Math.hypot(790-rodX,183-213)-70)<1e-10);
+  assert.equal(Number(attribute(pivot,'data-cx')),846);
+  assert.equal(Number(attribute(pivot,'data-cy')),213);
+  assert.match(mechanisms.wing.description,/一般的な連結機構/);
+});
+
+test('gas valve, gas flow and vehicle lift have independent sequencing hooks',()=>{
+  const svg=mechanismMarkup('thrust');
+  for(const name of ['thrust-electric','thrust-motor','thrust-valve','thrust-gas','thrust-body','thrust-force']) assert.ok(target(svg,name));
+  assert.equal(Number(attribute(target(svg,'thrust-valve'),'data-travel')),-38);
+  assert.equal(Number(attribute(target(svg,'thrust-body'),'data-travel')),-34);
+  assert.equal(attribute(target(svg,'thrust-gas'),'data-phase'),'gas');
+  assert.match(svg,/data-fixed="vehicle-wheels"/);
+  assert.match(mechanisms.thrust.description,/弁を閉じると噴射は止まる/);
+});
+
+test('unknown ids consistently fall back to a complete drive scene',()=>{
+  for(const id of [undefined,null,'','unknown','constructor','__proto__']) assert.equal(mechanismMarkup(id),mechanismMarkup('drive'));
 });

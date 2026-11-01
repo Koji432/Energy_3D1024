@@ -10,15 +10,19 @@ import {circuitIcon,productIcon,deviceIcons,disassembleIcon,assembleIcon} from '
 import {createDrone} from './models/drone.js';
 import {createRoadster} from './models/roadster.js';
 import {createCircuit,diagramMarkup} from './circuits.js';
-import {mechanisms,mechanismForRole,mechanismMarkup} from './roadster-mechanisms.js';
-import {wingMechanismPose} from './mechanism-motion.js';
+import {mechanisms,mechanismForRole,mechanismMarkup,mechanismIcons} from './roadster-mechanisms.js';
+import {wingMechanismPose,driveMechanismPose,thrustMechanismPose,suctionMechanismPose} from './mechanism-motion.js';
 const $=id=>document.getElementById(id);
 for(const b of document.querySelectorAll('[data-device]'))b.innerHTML=deviceIcons[b.dataset.device];
 $('disassemble').innerHTML=disassembleIcon;$('view-toggle').innerHTML=circuitIcon;
 let state=initialState(),manualView=false,highlighted=new Map();
 let currentMechanism='drive',renderedMechanism=null;
-let mechanismTime=0,mechanismMotionTargets={};
+let mechanismTime=0,mechanismMotionTargets={},mechanismPhaseTargets=[];
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let mechanismPlaying=!reducedMotion;
+const playbackIcons={play:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4 12 8-12 8Z"/></svg>',pause:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>'};
+for(const tab of document.querySelectorAll('[data-mechanism]'))tab.innerHTML=mechanismIcons[tab.dataset.mechanism];
+$('mechanism-circuit').innerHTML=circuitIcon;
 const viewport=$('viewport'),scene=new THREE.Scene();
 let renderer;
 try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});}
@@ -43,7 +47,10 @@ function showActive(){
  for(const m of Object.values(circuits))m.root.visible=false;
  const active=activeModel();active.root.visible=true;
  floor.position.y=state.view==='circuit'?-.65:active.floorY??(state.device==='fan'?-4.3:state.device==='drone'?-1.55:-1.8);
- if(state.view==='model')for(const p of active.parts)p.group.position.lerpVectors(p.home,p.away,phase(state.progress,p.start,p.end));
+ if(state.view==='model'){
+  for(const p of active.parts)p.group.position.lerpVectors(p.home,p.away,phase(state.progress,p.start,p.end));
+  active.updateConnections?.(state.progress);
+ }
  scene.updateMatrixWorld(true);
 }
 const bounds=new THREE.Box3(),center=new THREE.Vector3(),right=new THREE.Vector3(),up=new THREE.Vector3();
@@ -98,24 +105,53 @@ function moveWingMechanism(amount){
  targets['wing-motor']?.setAttribute('transform',`rotate(${dx*24} 125 186)`);
  targets['wing-thread']?.setAttribute('transform',`translate(${dx*2%15} 0)`);
 }
+function rotateMechanismTarget(id,angle){
+ const target=mechanismMotionTargets[id];
+ if(target)target.setAttribute('transform',`rotate(${angle%360} ${target.dataset.cx} ${target.dataset.cy})`);
+}
+function translateMechanismTarget(id,y){mechanismMotionTargets[id]?.setAttribute('transform',`translate(0 ${y})`);}
+function fadeMechanismTarget(id,opacity){mechanismMotionTargets[id]?.setAttribute('opacity',String(opacity));}
+function updateMechanismAnimation(){
+ if(currentMechanism==='drive'){
+  const pose=driveMechanismPose(mechanismTime);
+  for(const id of ['motor','field','sun','carrier','wheel'])rotateMechanismTarget('drive-'+id,pose[id+'AngleDeg']);
+  for(let i=0;i<3;i++)rotateMechanismTarget('drive-planet-'+i,pose.planetAngleDeg);
+  fadeMechanismTarget('drive-electric',pose.electric);fadeMechanismTarget('drive-field',pose.field);
+  for(const target of mechanismPhaseTargets){
+   const phase=Number(target.dataset.phase)*Math.PI*2/3,brightness=(1+Math.cos(pose.fieldAngleDeg*Math.PI/180-phase))/2;
+   target.setAttribute('opacity',String(pose.electric*(target.classList.contains('mechanism-coil-phase')?brightness:.25+.75*brightness)));
+  }
+  mechanismMotionTargets['drive-road']?.setAttribute('stroke-dashoffset',String(pose.wheelAngleDeg*Math.PI/180*70%43));
+ }else if(currentMechanism==='suction'){
+  const pose=suctionMechanismPose(mechanismTime);
+  for(let i=0;i<4;i++)rotateMechanismTarget('suction-fan-'+i,pose.fanAngleDeg);
+  translateMechanismTarget('suction-body',8*pose.compression);
+  fadeMechanismTarget('suction-air',pose.air);fadeMechanismTarget('suction-pressure',pose.compression);fadeMechanismTarget('suction-force',pose.compression);
+ }else if(currentMechanism==='thrust'){
+  const pose=thrustMechanismPose(mechanismTime);
+  translateMechanismTarget('thrust-body',-34*pose.lift);translateMechanismTarget('thrust-valve',-38*pose.valve);
+  rotateMechanismTarget('thrust-motor',pose.valve*180);
+  fadeMechanismTarget('thrust-electric',pose.electric);fadeMechanismTarget('thrust-gas',pose.gas);fadeMechanismTarget('thrust-force',pose.gas);
+ }else moveWingMechanism((1-Math.cos(mechanismTime*Math.PI/3))/2);
+}
 function syncMechanism(){
  const detail=$('mechanism-detail'),visible=state.device==='roadster'&&state.view==='circuit';
  detail.hidden=!visible;$('mechanism-jump').hidden=!visible;
- detail.classList.toggle('is-powered',visible&&state.power);
+ detail.classList.toggle('is-playing',visible&&mechanismPlaying);
+ $('mechanism-play').innerHTML=playbackIcons[mechanismPlaying?'pause':'play'];
+ $('mechanism-play').setAttribute('aria-label',mechanismPlaying?'一時停止':'再生');
  if(!visible)return;
  currentMechanism=mechanismForRole(state.selected,currentMechanism);
  const mechanism=mechanisms[currentMechanism];
  if(renderedMechanism!==currentMechanism){
-  $('mechanism-heading').textContent=mechanism.title;
+  $('mechanism-illustration').setAttribute('aria-label',mechanism.title+'のアニメーション');
   $('mechanism-illustration').innerHTML=mechanismMarkup(currentMechanism);
-  $('mechanism-flow').replaceChildren(...mechanism.flow.map(text=>{const item=document.createElement('li');item.textContent=text;return item;}));
-  $('mechanism-captions').replaceChildren(...mechanism.caption.map(text=>{const p=document.createElement('p');p.textContent=text;return p;}));
   mechanismTime=0;
   mechanismMotionTargets=Object.fromEntries([...$('mechanism-illustration').querySelectorAll('[data-motion]')].map(el=>[el.dataset.motion,el]));
-  if(currentMechanism==='wing')moveWingMechanism(0);
+  mechanismPhaseTargets=[...$('mechanism-illustration').querySelectorAll('[data-phase="0"],[data-phase="1"],[data-phase="2"]')];
+  updateMechanismAnimation();
   renderedMechanism=currentMechanism;
  }
- $('mechanism-power').textContent=state.power?'ON':'OFF';
  for(const tab of document.querySelectorAll('[data-mechanism]'))tab.setAttribute('aria-pressed',String(tab.dataset.mechanism===currentMechanism));
 }
 function updateSelection(){
@@ -181,7 +217,9 @@ for(const tab of document.querySelectorAll('[data-mechanism]'))tab.addEventListe
  currentMechanism=id;
  if(state.selected!==role)act({type:'SELECT',role});else syncMechanism();
 });
-$('mechanism-jump').addEventListener('click',()=>{$('mechanism-detail').scrollIntoView({behavior:reducedMotion?'instant':'smooth',block:'start'});$('mechanism-heading').focus({preventScroll:true});});
+$('mechanism-jump').addEventListener('click',()=>{$('mechanism-detail').scrollIntoView({behavior:reducedMotion?'instant':'smooth',block:'start'});$('mechanism-illustration').focus({preventScroll:true});});
+$('mechanism-play').addEventListener('click',()=>{mechanismPlaying=!mechanismPlaying;syncMechanism();});
+$('mechanism-replay').addEventListener('click',()=>{renderedMechanism=null;mechanismPlaying=true;syncMechanism();});
 $('disassemble').addEventListener('click',()=>act({type:state.view==='model'&&(state.direction>0||(state.direction===0&&state.progress>0))?'ASSEMBLE':'DISASSEMBLE'}));$('view-toggle').addEventListener('click',()=>act({type:'TOGGLE_VIEW'}));
 function activatePart(role){if(role==='switch'&&canOperate(state))act({type:'POWER'});else if(state.view==='circuit'||state.progress>0)act({type:'SELECT',role});}
 document.addEventListener('click',e=>{const el=e.target.closest('[data-part]');if(el)activatePart(el.dataset.part);});
@@ -211,8 +249,8 @@ function render(now){
   if(!state.direction){syncUI();updateSelection();$('announcement').textContent=state.progress===1?'分解完了':'戻りました';}
  }
  if(state.power&&canOperate(state)&&!reducedMotion){const model=activeModel();if(model.animate)model.animate(now/1000,dt,true);else for(const rotor of model.rotors||[])rotor.rotation[rotor.userData.axis||'y']+=dt*15;}
- if(state.device==='roadster'&&state.view==='circuit'&&state.power&&!reducedMotion&&currentMechanism==='wing'){
-  mechanismTime+=dt;moveWingMechanism((1-Math.cos(mechanismTime*Math.PI/3))/2);
+ if(state.device==='roadster'&&state.view==='circuit'&&mechanismPlaying){
+  mechanismTime+=dt;updateMechanismAnimation();
  }
  controls.update();scene.updateMatrixWorld(true);
  const occupied=[];

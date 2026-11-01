@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {createExplodedWiring} from './exploded-wiring.js';
 export function createFlashlight(){
  const root=new THREE.Group(),parts=[];
  const mat={shell:new THREE.MeshStandardMaterial({color:0x255c70,metalness:.55,roughness:.3}),dark:new THREE.MeshStandardMaterial({color:0x153441,roughness:.48}),silver:new THREE.MeshStandardMaterial({color:0xb9c7cf,metalness:.82,roughness:.24}),gold:new THREE.MeshStandardMaterial({color:0xd99b42,metalness:.45,roughness:.34}),black:new THREE.MeshStandardMaterial({color:0x263243,roughness:.5}),pcb:new THREE.MeshStandardMaterial({color:0x1e8a64,roughness:.42}),white:new THREE.MeshStandardMaterial({color:0xf1f1df,roughness:.4}),led:new THREE.MeshStandardMaterial({color:0xf5ce54,roughness:.3}),glass:new THREE.MeshPhysicalMaterial({color:0xbadcf2,transparent:true,opacity:.23,roughness:.05,side:THREE.DoubleSide,depthWrite:false})};
@@ -20,6 +21,8 @@ export function createFlashlight(){
  mesh(new THREE.BoxGeometry(.14,.35,.35),mat.white,led.group,[-.1,-.08,0]);const ledChip=mesh(new THREE.BoxGeometry(.045,.23,.23),mat.led,led.group,[-.195,-.08,0]);
  const resistor=mesh(new THREE.CylinderGeometry(.07,.07,.34,20),mat.gold,led.group,[-.13,.3,0]);resistor.rotation.x=Math.PI/2;resistor.userData.part='resistor';
  for(const z of [-.08,.04,.09]){const band=ring(led.group,.072,.012,0,mat.black);band.position.set(-.13,.3,z);band.rotation.y=0;band.userData.part='resistor';}
+ for(const z of [-.23,.23]){const pin=mesh(new THREE.CylinderGeometry(.017,.017,.12,12),mat.silver,led.group,[-.13,.3,z]);pin.rotation.x=Math.PI/2;pin.userData.part='resistor';}
+ for(const z of [-.225,.225])mesh(new THREE.BoxGeometry(.06,.09,.1),mat.gold,led.group,[-.14,-.08,z]);
  const source=part('source','source',[.25,0,0],[.05,.28,.1],.35,.92,'乾電池',[0,1,0]);
  cyl(source.group,.44,2.65,mat.gold);cyl(source.group,.445,.55,mat.black,1.04);cyl(source.group,.42,.035,mat.silver,-1.34);cyl(source.group,.17,.14,mat.silver,-1.405);cyl(source.group,.42,.035,mat.silver,1.34);
  // Bold polarity marks sit on the visible face of the battery.
@@ -27,6 +30,7 @@ export function createFlashlight(){
  const cap=part('cap',null,[2.58,0,0],[5.9,.1,0],0,.36,'ふた');cyl(cap.group,.69,.4,mat.shell);for(let i=0;i<3;i++)ring(cap.group,.69,.02,-.12+i*.11,mat.dark);cyl(cap.group,.54,.04,mat.dark,.22);
  const spring=part('spring',null,[2.08,0,0],[4.2,.1,0],.08,.47,'ばね',[0,.9,0]);const pts=[];for(let i=0;i<=160;i++){const t=i/160;pts.push(new THREE.Vector3(-.3+t*.6,Math.cos(t*Math.PI*10)*.27,Math.sin(t*Math.PI*10)*.27));}mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),160,.026,8,false),mat.silver,spring.group);
  const sw=part('switch','switch',[-.8,.7,0],[1.6,2.15,0],.45,1,'スイッチ',[0,.75,0]);mesh(new THREE.BoxGeometry(.85,.16,.43),mat.black,sw.group);
+ for(const x of [-.455,.455])mesh(new THREE.BoxGeometry(.1,.07,.12),mat.gold,sw.group,[x,-.02,.195]);
  const slider=new THREE.Group();sw.group.add(slider);const sliderMat=mat.shell.clone();mesh(new THREE.BoxGeometry(.4,.16,.32),sliderMat,slider,[-.12,.15,0]);for(let i=0;i<3;i++)mesh(new THREE.BoxGeometry(.025,.02,.27),mat.silver,slider,[-.2+i*.08,.24,0]);
  const beam=new THREE.Mesh(new THREE.CylinderGeometry(1.55,.79,2.1,48,1,true),new THREE.MeshBasicMaterial({color:0xffe9ad,transparent:true,opacity:.13,depthWrite:false,side:THREE.DoubleSide}));beam.rotation.z=Math.PI/2;beam.position.set(-3.84,0,0);beam.userData.excludeFromFrame=true;beam.visible=false;beam.raycast=()=>{};root.add(beam);
  const pixels=new Uint8Array(64*64*4);for(let y=0;y<64;y++)for(let x=0;x<64;x++){const r=Math.hypot(x-31.5,y-31.5)/31.5,i=(y*64+x)*4;pixels[i]=255;pixels[i+1]=238;pixels[i+2]=175;pixels[i+3]=Math.max(0,Math.round((1-r)**2*130));if(r>=1)pixels[i+3]=0;}
@@ -34,6 +38,31 @@ export function createFlashlight(){
  const light=new THREE.PointLight(0xffedb2,0,6,2);light.position.set(-2.9,.15,0);root.add(light);
  function setPowered(on){slider.position.x=on?.23:0;sliderMat.emissive.setHex(on?0x1d9a53:0);sliderMat.emissiveIntensity=on?.5:0;mat.led.emissive.setHex(0xffe49c);mat.led.emissiveIntensity=on?2:0;mat.glass.color.setHex(on?0xfff3cb:0xbadcf2);mat.glass.emissive.setHex(0xffefbc);mat.glass.emissiveIntensity=on?2:0;mat.glass.opacity=on?.94:.23;beam.visible=halo.visible=on;light.intensity=on?13:0;}
  for(const p of parts)if(p.role)p.group.traverse(o=>{if(o.isMesh&&!o.userData.part)o.userData.part=p.role;});
+ const V=(x,y,z)=>new THREE.Vector3(x,y,z);
+ const connections=createExplodedWiring({root,radius:.041,
+  terminals:[
+   {id:'source-positive',node:'source',role:'source',partId:source.id,group:source.group,position:V(-1.48,0,0),polarity:'positive'},
+   {id:'source-negative',node:'source',role:'source',partId:source.id,group:source.group,position:V(1.37,0,0),polarity:'negative'},
+   {id:'switch-input',node:'switch',role:'switch',partId:sw.id,group:sw.group,position:V(-.47,-.02,.255)},
+   {id:'switch-output',node:'switch',role:'switch',partId:sw.id,group:sw.group,position:V(.47,-.02,.255)},
+   {id:'resistor-input',node:'resistor',role:'resistor',partId:led.id,group:led.group,position:V(-.13,.3,.29)},
+   {id:'resistor-output',node:'resistor',role:'resistor',partId:led.id,group:led.group,position:V(-.13,.3,-.29)},
+   {id:'led-anode',node:'led',role:'led',partId:led.id,group:led.group,position:V(-.14,-.08,.26),polarity:'anode'},
+   {id:'led-cathode',node:'led',role:'led',partId:led.id,group:led.group,position:V(-.14,-.08,-.26),polarity:'cathode'},
+  ],
+  components:[
+   {id:'source',kind:'battery',terminals:['source-positive','source-negative']},
+   {id:'switch',kind:'switch',terminals:['switch-input','switch-output']},
+   {id:'resistor',kind:'resistor',terminals:['resistor-input','resistor-output']},
+   {id:'led',kind:'led',terminals:['led-anode','led-cathode']},
+  ],
+  leads:[
+   {id:'positive-feed',from:'source-positive',to:'switch-input',color:'supply',route:(a,b)=>[a,a.clone().add(V(-.12,.38,.6)),V((a.x+b.x)*.45,Math.max(a.y,b.y)*.7+.15,.8),b.clone().add(V(-.18,-.02,.48)),b]},
+   {id:'switched-feed',from:'switch-output',to:'resistor-input',color:'supply',route:(a,b)=>[a,a.clone().add(V(.13,.42,.55)),V((a.x+b.x)*.5,Math.max(a.y,b.y)+.5,.9),b.clone().add(V(-.1,.38,.48)),b]},
+   {id:'led-feed',from:'resistor-output',to:'led-anode',color:'supply',route:(a,b)=>[a,a.clone().add(V(-.18,.12,-.04)),b.clone().add(V(-.2,-.03,.17)),b]},
+   {id:'negative-return',from:'led-cathode',to:'source-negative',color:'return',route:(a,b)=>[a,a.clone().add(V(-.15,-.25,.72)),V((a.x+b.x)*.5,Math.min(a.y,b.y)-.92,1.12),b.clone().add(V(.28,-.28,.6)),b]},
+  ],
+ });
  setPowered(false);
- return {root,parts,rotors:[],setPowered,focus:new THREE.Vector3(0,0,0)};
+ return {root,parts,rotors:[],setPowered,connections,updateConnections:connections.updateConnections,focus:new THREE.Vector3(0,0,0)};
 }

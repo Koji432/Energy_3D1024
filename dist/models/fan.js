@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {createExplodedWiring} from './exploded-wiring.js';
 
 // A pedestal fan with individually movable, correctly ordered head components.
 export function createFan() {
@@ -104,6 +105,8 @@ export function createFan() {
   }
   add(motor, new THREE.CylinderGeometry(.065, .065, .17, 20), dark, 0, .65, -.31);
   add(motor, new THREE.CylinderGeometry(.12, .11, .045, 24), pale, 0, .75, -.31);
+  add(motor, new THREE.BoxGeometry(.55, .13, .18), dark, 0, -.55, .17);
+  for (const x of [-.19, .19]) add(motor, new THREE.BoxGeometry(.075, .08, .1), metal, x, -.55, .25);
 
   const blades = part('blades', null, '羽根', new THREE.Vector3(0, 1.7, .2), new THREE.Vector3(-.95, 1.3, 2.7), .23, .8);
   const spinning = new THREE.Group();
@@ -174,6 +177,7 @@ export function createFan() {
   controlHitArea.userData.part = 'switch';
   controlHitArea.userData.powerControl = true;
   tube(controls, [[-.22, -.03, -.15], [-.3, -.1, -.45], [-.25, -.1, -.7]], .027, dark, 12);
+  for (const x of [-.53, .53]) add(controls, new THREE.BoxGeometry(.09, .07, .12), copper, x, -.01, .2);
 
   const source = part('source', 'source', '電源プラグ', new THREE.Vector3(-.74, -3.94, -.5), new THREE.Vector3(-3.35, -3.4, .45), .46, .98, new THREE.Vector3(-.5, .45, .35));
   tube(source, [[.68, .05, 0], [.15, -.05, -.5], [-.55, -.12, -.6], [-1.2, -.12, -.12], [-1.48, -.1, .44]], .035, pale, 32);
@@ -183,6 +187,30 @@ export function createFan() {
     const prong = add(source, new THREE.BoxGeometry(.048, .1, .24), metal, -1.48 + x, -.1, 1.02);
     prong.rotation.y = -.15;
   }
+  add(source, new THREE.BoxGeometry(.36, .11, .19), dark, .75, .05, .1);
+  for (const x of [.64, .86]) add(source, new THREE.BoxGeometry(.06, .07, .08), metal, x, .08, .195);
+
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const connections = createExplodedWiring({root, radius: .048,
+    terminals: [
+      {id: 'supply-a', node: 'source', role: 'source', partId: 'source', group: source, position: V(.64, .09, .24)},
+      {id: 'supply-b', node: 'source', role: 'source', partId: 'source', group: source, position: V(.86, .09, .24)},
+      {id: 'switch-input', node: 'switch', role: 'switch', partId: 'switch', group: controls, position: V(-.55, -.01, .26)},
+      {id: 'switch-output', node: 'switch', role: 'switch', partId: 'switch', group: controls, position: V(.55, -.01, .26)},
+      {id: 'motor-input', node: 'motor', role: 'motor', partId: 'motor', group: motor, position: V(.19, -.55, .31)},
+      {id: 'motor-return', node: 'motor', role: 'motor', partId: 'motor', group: motor, position: V(-.19, -.55, .31)},
+    ],
+    components: [
+      {id: 'source', kind: 'ac-source', terminals: ['supply-a', 'supply-b']},
+      {id: 'switch', kind: 'switch', terminals: ['switch-input', 'switch-output']},
+      {id: 'motor', kind: 'motor', terminals: ['motor-input', 'motor-return']},
+    ],
+    leads: [
+      {id: 'supply-feed', from: 'supply-a', to: 'switch-input', color: 'supply', route: (a, b) => [a, a.clone().add(V(.6, .28, .65)), b.clone().add(V(-.6, .15, .45)), b]},
+      {id: 'motor-feed', from: 'switch-output', to: 'motor-input', color: 'supply', route: (a, b) => [a, a.clone().add(V(.65, .45, .23)), V(Math.max(a.x, b.x) + .75, (a.y + b.y) / 2, 1.9), b.clone().add(V(.36, -.06, .5)), b]},
+      {id: 'motor-return', from: 'motor-return', to: 'supply-b', color: 'return', route: (a, b) => [a, a.clone().add(V(-.8, -.2, .7)), V(.6, (a.y + b.y) / 2 - .1, 1.7), b.clone().add(V(.38, .52, .5)), b]},
+    ],
+  });
 
   let powered = false;
   function setPowered(on) {
@@ -197,5 +225,5 @@ export function createFan() {
     spinning.rotation.z = (spinning.rotation.z - step * 10) % (Math.PI * 2);
   }
   setPowered(false);
-  return { root, parts, rotors, focus: new THREE.Vector3(0, -.1, 0), setPowered, animate };
+  return { root, parts, rotors, focus: new THREE.Vector3(0, -.1, 0), setPowered, animate, connections, updateConnections: connections.updateConnections };
 }
