@@ -18,7 +18,7 @@ export function createFlashlight(){
  const lens=part('lens',null,[-2.75,0,0],[-6.25,.1,0],0,.34,'レンズ');const lensDisc=cyl(lens.group,.96,.04,mat.glass);ring(lens.group,.98,.04,0,mat.silver);
  const led=part('led','led',[-1.78,0,0],[-2.75,.2,0],.33,.8,'LED',[0,1.3,0]);
  cyl(led.group,.52,.09,mat.pcb);ring(led.group,.46,.015,-.055,mat.gold);
- mesh(new THREE.BoxGeometry(.14,.35,.35),mat.white,led.group,[-.1,-.08,0]);const ledChip=mesh(new THREE.BoxGeometry(.045,.23,.23),mat.led,led.group,[-.195,-.08,0]);
+ mesh(new THREE.BoxGeometry(.14,.35,.35),mat.white,led.group,[-.1,-.08,0]);const ledChip=mesh(new THREE.BoxGeometry(.045,.23,.23),mat.led,led.group,[-.195,-.08,0]);ledChip.name='flashlight-led-chip';
  const resistor=mesh(new THREE.CylinderGeometry(.07,.07,.34,20),mat.gold,led.group,[-.13,.3,0]);resistor.rotation.x=Math.PI/2;resistor.userData.part='resistor';
  for(const z of [-.08,.04,.09]){const band=ring(led.group,.072,.012,0,mat.black);band.position.set(-.13,.3,z);band.rotation.y=0;band.userData.part='resistor';}
  for(const z of [-.23,.23]){const pin=mesh(new THREE.CylinderGeometry(.017,.017,.12,12),mat.silver,led.group,[-.13,.3,z]);pin.rotation.x=Math.PI/2;pin.userData.part='resistor';}
@@ -31,12 +31,21 @@ export function createFlashlight(){
  const spring=part('spring',null,[2.08,0,0],[4.2,.1,0],.08,.47,'ばね',[0,.9,0]);const pts=[];for(let i=0;i<=160;i++){const t=i/160;pts.push(new THREE.Vector3(-.3+t*.6,Math.cos(t*Math.PI*10)*.27,Math.sin(t*Math.PI*10)*.27));}mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),160,.026,8,false),mat.silver,spring.group);
  const sw=part('switch','switch',[-.8,.7,0],[1.6,2.15,0],.45,1,'スイッチ',[0,.75,0]);mesh(new THREE.BoxGeometry(.85,.16,.43),mat.black,sw.group);
  for(const x of [-.455,.455])mesh(new THREE.BoxGeometry(.1,.07,.12),mat.gold,sw.group,[x,-.02,.195]);
- const slider=new THREE.Group();sw.group.add(slider);const sliderMat=mat.shell.clone();mesh(new THREE.BoxGeometry(.4,.16,.32),sliderMat,slider,[-.12,.15,0]);for(let i=0;i<3;i++)mesh(new THREE.BoxGeometry(.025,.02,.27),mat.silver,slider,[-.2+i*.08,.24,0]);
+ const buttonRim=mesh(new THREE.CylinderGeometry(.3,.3,.085,64),mat.dark,sw.group,[0,.11,0]);buttonRim.userData.powerControl=true;
+ const buttonMat=new THREE.MeshStandardMaterial({color:0x338c9d,roughness:.36,metalness:.22});
+ const pushButton=mesh(new THREE.CylinderGeometry(.235,.245,.1,64),buttonMat,sw.group,[0,.205,0]);pushButton.name='flashlight-power-button';pushButton.userData.powerControl=true;
+ const buttonRingMat=new THREE.MeshStandardMaterial({color:0x7bc2d1,emissive:0x2aa67a,emissiveIntensity:0,roughness:.32,metalness:.25});
+ const buttonRing=mesh(new THREE.TorusGeometry(.19,.014,8,48),buttonRingMat,pushButton,[0,.053,0]);buttonRing.rotation.x=Math.PI/2;
+ const powerArc=[];for(let i=0;i<=24;i++){const a=Math.PI*.23+i*Math.PI*1.54/24;powerArc.push(new THREE.Vector3(Math.sin(a)*.085,.056,Math.cos(a)*.085));}
+ mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(powerArc),32,.01,6,false),mat.white,pushButton);
+ const powerStroke=mesh(new THREE.CylinderGeometry(.01,.01,.088,12),mat.white,pushButton,[0,.057,.061]);powerStroke.rotation.x=Math.PI/2;
+ const buttonHitArea=mesh(new THREE.BoxGeometry(.98,.44,.8),new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false,colorWrite:false}),sw.group,[0,.18,.05]);
+ buttonHitArea.name='flashlight-power-hit-area';buttonHitArea.userData.powerControl=true;buttonHitArea.userData.excludeFromFrame=true;buttonHitArea.castShadow=buttonHitArea.receiveShadow=false;
  const beam=new THREE.Mesh(new THREE.CylinderGeometry(1.55,.79,2.1,48,1,true),new THREE.MeshBasicMaterial({color:0xffe9ad,transparent:true,opacity:.13,depthWrite:false,side:THREE.DoubleSide}));beam.rotation.z=Math.PI/2;beam.position.set(-3.84,0,0);beam.userData.excludeFromFrame=true;beam.visible=false;beam.raycast=()=>{};root.add(beam);
  const pixels=new Uint8Array(64*64*4);for(let y=0;y<64;y++)for(let x=0;x<64;x++){const r=Math.hypot(x-31.5,y-31.5)/31.5,i=(y*64+x)*4;pixels[i]=255;pixels[i+1]=238;pixels[i+2]=175;pixels[i+3]=Math.max(0,Math.round((1-r)**2*130));if(r>=1)pixels[i+3]=0;}
  const halo=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.DataTexture(pixels,64,64),transparent:true,depthWrite:false}));halo.material.map.needsUpdate=true;halo.position.set(-2.8,0,0);halo.scale.set(2.8,2.8,1);halo.visible=false;halo.raycast=()=>{};root.add(halo);
  const light=new THREE.PointLight(0xffedb2,0,6,2);light.position.set(-2.9,.15,0);root.add(light);
- function setPowered(on){slider.position.x=on?.23:0;sliderMat.emissive.setHex(on?0x1d9a53:0);sliderMat.emissiveIntensity=on?.5:0;mat.led.emissive.setHex(0xffe49c);mat.led.emissiveIntensity=on?2:0;mat.glass.color.setHex(on?0xfff3cb:0xbadcf2);mat.glass.emissive.setHex(0xffefbc);mat.glass.emissiveIntensity=on?2:0;mat.glass.opacity=on?.94:.23;beam.visible=halo.visible=on;light.intensity=on?13:0;}
+ function setPowered(on){on=Boolean(on);pushButton.position.y=on?.15:.205;buttonMat.emissive.setHex(0x1d9a53);buttonMat.emissiveIntensity=on?.38:0;buttonRingMat.color.setHex(on?0x79e6ac:0x7bc2d1);buttonRingMat.emissiveIntensity=on?.8:0;mat.led.emissive.setHex(0xffe49c);mat.led.emissiveIntensity=on?2:0;mat.glass.color.setHex(on?0xfff3cb:0xbadcf2);mat.glass.emissive.setHex(0xffefbc);mat.glass.emissiveIntensity=on?2:0;mat.glass.opacity=on?.94:.23;beam.visible=halo.visible=on;light.intensity=on?13:0;}
  for(const p of parts)if(p.role)p.group.traverse(o=>{if(o.isMesh&&!o.userData.part)o.userData.part=p.role;});
  const V=(x,y,z)=>new THREE.Vector3(x,y,z);
  const connections=createExplodedWiring({root,radius:.041,

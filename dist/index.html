@@ -31,27 +31,9 @@
    </section>
    <section id="diagram-panel" class="diagram-panel" hidden>
     <h2>回路図</h2><svg id="schematic" viewBox="0 0 640 560" role="group" aria-label="回路図"></svg>
-    <button id="mechanism-jump" class="mechanism-jump" aria-label="機構のアニメーションを見る" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.7 3-2 .9L3.6 6l-2 3.5 2.2 2-.1 2.3-2.1 2 2 3.4 2.8-.9 2 .9L9 22h4l.7-2.8 2-.9 2.8.9 2-3.4-2.2-2v-2.3l2.2-2-2-3.5-2.8.9-2-.9L13 3Z"/><path d="m9 9 6 3.5L9 16Z"/></svg></button>
    </section>
   </section>
   <nav id="part-buttons" class="part-buttons" aria-label="部品を選択" hidden></nav>
-  <section id="mechanism-detail" class="mechanism-detail" aria-label="機構のアニメーション" hidden>
-   <header class="mechanism-header">
-    <nav class="mechanism-tabs" aria-label="機構を選択">
-     <button type="button" data-mechanism="drive" aria-label="走行" aria-pressed="true"></button>
-     <button type="button" data-mechanism="suction" aria-label="床下の吸引" aria-pressed="false"></button>
-     <button type="button" data-mechanism="wing" aria-label="可動翼" aria-pressed="false"></button>
-     <button type="button" data-mechanism="thrust" aria-label="ガス噴射" aria-pressed="false"></button>
-    </nav>
-    <nav class="mechanism-playback" aria-label="アニメーション操作">
-     <button id="mechanism-play" aria-label="一時停止"></button>
-     <button id="mechanism-replay" aria-label="最初から再生"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11a8 8 0 1 1 1 5M4 4v7h7"/></svg></button>
-     <a id="mechanism-circuit" href="#schematic" aria-label="回路図へ"></a>
-    </nav>
-   </header>
-   <div id="mechanism-illustration" class="mechanism-illustration" tabindex="0" aria-label="機構の拡大図"></div>
-   <div class="mechanism-pan" aria-hidden="true"><svg viewBox="0 0 80 24"><path d="M8 12h64M18 3 8 12l10 9M62 3l10 9-10 9"/></svg></div>
-  </section>
   <p id="announcement" class="sr-only" role="status"></p>
  </main>
  <noscript>JavaScriptを有効にしてください。</noscript>

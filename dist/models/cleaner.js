@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {createExplodedWiring} from './exploded-wiring.js';
 
 // The brush opening, collection bag and blower remain separate in the exploded view.
 export function createCleaner() {
@@ -19,7 +20,6 @@ export function createCleaner() {
   const seam = material(0xb6b49f, .95);
   const silver = material(0xb4bfc0, .26, .8);
   const copper = material(0xa67745, .48, .56);
-  const red = material(0xb74b35, .62);
 
   function part(id, role, label, home, away, start, end, labelOffset = V(0, .6, 0)) {
     const group = new THREE.Group();
@@ -144,8 +144,10 @@ export function createCleaner() {
   roundedBox(motor, .62, .34, .36, .065, black, -.63, .35, 0);
   roundedBox(motor, 1.3, .08, .8, .05, silver, 0, -.77, 0);
   for (const x of [-.52, .52]) cylinder(motor, .055, .06, black, x, -.7, .25, 20);
-  tube(motor, [[-.25, -.63, .17], [-.5, -.7, .45], [-1.15, -.48, .7]], .027, red);
-  tube(motor, [[-.15, -.63, .23], [-.42, -.75, .51], [-1.08, -.55, .75]], .026, black);
+  for (const x of [-.24, .24]) {
+    roundedBox(motor, .15, .15, .16, .025, black, x, -.45, .4);
+    roundedBox(motor, .11, .1, .11, .02, copper, x, -.45, .485);
+  }
   for (let i = 0; i < 10; i++) {
     const a = i * Math.PI * 2 / 10;
     const vent = add(motor, new THREE.BoxGeometry(.025, .17, .055), black, Math.cos(a) * .45, -.42, Math.sin(a) * .45);
@@ -173,19 +175,28 @@ export function createCleaner() {
 
   const sw = part('switch', 'switch', 'スイッチ', V(1.73, -.77, 1.205), V(4.0, -1.25, 2.0), .43, .97, V(0, .65, .1));
   roundedBox(sw, .47, .59, .13, .075, greenEdge);
-  roundedBox(sw, .34, .46, .12, .045, black, 0, .01, .09);
-  const rocker = roundedBox(sw, .27, .34, .075, .025, rubber.clone(), 0, .025, .17);
-  rocker.name = 'cleaner-power-rocker';
-  rocker.userData.powerControl = true;
-  rocker.rotation.x = -.12;
-  const powerIndicator = add(rocker, new THREE.BoxGeometry(.1, .018, .009), cream.clone(), 0, .07, .044);
+  const bezel = cylinder(sw, .22, .08, black, 0, .025, .11);
+  bezel.rotation.x = Math.PI / 2;
+  const powerButton = new THREE.Group();
+  powerButton.name = 'cleaner-power-button';
+  powerButton.position.set(0, .025, .205);
+  powerButton.userData.part = 'switch';
+  powerButton.userData.powerControl = true;
+  sw.add(powerButton);
+  const buttonFace = cylinder(powerButton, .18, .14, rubber.clone());
+  buttonFace.name = 'cleaner-power-button-face';
+  buttonFace.rotation.x = Math.PI / 2;
+  buttonFace.userData.powerControl = true;
+  const indicatorMaterial = cream.clone();
+  const powerIndicator = add(powerButton, new THREE.TorusGeometry(.063, .009, 7, 36, Math.PI * 1.6), indicatorMaterial, 0, 0, .078);
+  powerIndicator.rotation.z = Math.PI * .7;
   powerIndicator.name = 'cleaner-power-indicator';
+  roundedBox(powerButton, .017, .082, .012, .008, indicatorMaterial, 0, .065, .078);
   const controlHitArea = add(sw, new THREE.BoxGeometry(.68, .8, .18), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }), 0, .025, .205);
   controlHitArea.name = 'cleaner-power-hit-area';
   controlHitArea.userData.powerControl = true;
   controlHitArea.castShadow = controlHitArea.receiveShadow = false;
-  tube(sw, [[-.12, -.16, -.09], [-.35, -.29, -.38], [-.6, -.23, -.65]], .026, red);
-  tube(sw, [[.08, -.16, -.09], [-.21, -.38, -.42], [-.51, -.31, -.68]], .026, black);
+  for (const x of [-.27, .27]) roundedBox(sw, .11, .09, .18, .02, copper, x, -.12, .05);
 
   const source = part('source', 'source', '電源プラグ', V(-2.15, -1.45, -.45), V(-4, -1.43, 1.8), .47, 1, V(-.5, .5, .1));
   const outlet = cylinder(source, .1, .2, rubber, 0, 0, 0, 24);
@@ -193,6 +204,8 @@ export function createCleaner() {
   tube(source, [[0, 0, 0], [-.5, -.33, -.1], [-.95, -.39, .25], [-1.35, -.38, .8]], .034, black, 34);
   roundedBox(source, .36, .19, .48, .06, rubber, -1.36, -.37, 1.0);
   for (const x of [-.09, .09]) add(source, new THREE.BoxGeometry(.045, .09, .24), silver, -1.36 + x, -.37, 1.35);
+  roundedBox(source, .42, .21, .44, .055, rubber, .18, .015, 0);
+  for (const z of [-.16, .16]) roundedBox(source, .12, .085, .08, .018, silver, .35, .03, z);
 
   for (const item of parts) {
     item.group.traverse(object => {
@@ -202,12 +215,44 @@ export function createCleaner() {
       }
     });
   }
+  const connections = createExplodedWiring({root, radius: .048,
+    terminals: [
+      {id: 'supply-a', node: 'source', role: 'source', partId: 'source', group: source, position: V(.41, .03, -.16)},
+      {id: 'supply-b', node: 'source', role: 'source', partId: 'source', group: source, position: V(.41, .03, .16)},
+      {id: 'switch-input', node: 'switch', role: 'switch', partId: 'switch', group: sw, position: V(-.27, -.12, .14)},
+      {id: 'switch-output', node: 'switch', role: 'switch', partId: 'switch', group: sw, position: V(.27, -.12, .14)},
+      {id: 'motor-input', node: 'motor', role: 'motor', partId: 'motor', group: motor, position: V(.24, -.45, .54)},
+      {id: 'motor-return', node: 'motor', role: 'motor', partId: 'motor', group: motor, position: V(-.24, -.45, .54)},
+    ],
+    components: [
+      {id: 'source', kind: 'ac-source', terminals: ['supply-a', 'supply-b']},
+      {id: 'switch', kind: 'switch', terminals: ['switch-input', 'switch-output']},
+      {id: 'motor', kind: 'motor', terminals: ['motor-input', 'motor-return']},
+    ],
+    leads: [
+      {id: 'supply-feed', from: 'supply-a', to: 'switch-input', color: 'supply', route: (a, b) => [
+        a, a.clone().add(V(.55, -.17, .65)),
+        V((a.x + b.x) / 2, Math.min(a.y, b.y) - .1, Math.max(a.z, b.z) + 1.6),
+        b.clone().add(V(-.55, -.12, .65)), b,
+      ]},
+      {id: 'motor-feed', from: 'switch-output', to: 'motor-input', color: 'supply', route: (a, b) => [
+        a, a.clone().add(V(.6, .15, .4)),
+        V(Math.max(a.x, b.x) + .9, (a.y + b.y) / 2, Math.max(a.z, b.z) + .65),
+        b.clone().add(V(.7, -.15, .55)), b,
+      ]},
+      {id: 'motor-return', from: 'motor-return', to: 'supply-b', color: 'return', route: (a, b) => [
+        a, a.clone().add(V(-.65, .4, .8)),
+        V((a.x + b.x) / 2 + .35, Math.max(a.y, b.y) + 1.3, Math.max(a.z, b.z) + 2),
+        b.clone().add(V(.15, .5, .65)), b,
+      ]},
+    ],
+  });
   let powered = false;
   function setPowered(on) {
     powered = Boolean(on);
-    rocker.rotation.x = powered ? .22 : -.18;
-    rocker.material.emissive.setHex(0x28623a);
-    rocker.material.emissiveIntensity = powered ? .2 : 0;
+    powerButton.position.z = powered ? .14 : .205;
+    buttonFace.material.emissive.setHex(0x28623a);
+    buttonFace.material.emissiveIntensity = powered ? .2 : 0;
     powerIndicator.material.emissive.setHex(0x2cba63);
     powerIndicator.material.emissiveIntensity = powered ? .7 : 0;
   }
@@ -220,5 +265,5 @@ export function createCleaner() {
     }
   }
   setPowered(false);
-  return { root, parts, rotors, focus: V(0, -.08, 0), floorY: -2.04, viewDirection: V(.65, .4, 1), setPowered, animate };
+  return { root, parts, rotors, focus: V(0, -.08, 0), floorY: -2.04, viewDirection: V(.65, .4, 1), setPowered, animate, connections, updateConnections: connections.updateConnections };
 }

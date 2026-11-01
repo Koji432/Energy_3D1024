@@ -10,19 +10,11 @@ import {circuitIcon,productIcon,deviceIcons,disassembleIcon,assembleIcon} from '
 import {createDrone} from './models/drone.js';
 import {createRoadster} from './models/roadster.js';
 import {createCircuit,diagramMarkup} from './circuits.js';
-import {mechanisms,mechanismForRole,mechanismMarkup,mechanismIcons} from './roadster-mechanisms.js';
-import {wingMechanismPose,driveMechanismPose,thrustMechanismPose,suctionMechanismPose} from './mechanism-motion.js';
 const $=id=>document.getElementById(id);
 for(const b of document.querySelectorAll('[data-device]'))b.innerHTML=deviceIcons[b.dataset.device];
 $('disassemble').innerHTML=disassembleIcon;$('view-toggle').innerHTML=circuitIcon;
 let state=initialState(),manualView=false,highlighted=new Map();
-let currentMechanism='drive',renderedMechanism=null;
-let mechanismTime=0,mechanismMotionTargets={},mechanismPhaseTargets=[];
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
-let mechanismPlaying=!reducedMotion;
-const playbackIcons={play:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4 12 8-12 8Z"/></svg>',pause:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>'};
-for(const tab of document.querySelectorAll('[data-mechanism]'))tab.innerHTML=mechanismIcons[tab.dataset.mechanism];
-$('mechanism-circuit').innerHTML=circuitIcon;
 const viewport=$('viewport'),scene=new THREE.Scene();
 let renderer;
 try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});}
@@ -97,66 +89,8 @@ function rebuildLabels(){
  }
 }
 function clearHighlights(){for(const [m,original]of highlighted){m.material.dispose();m.material=original;}highlighted.clear();}
-function moveWingMechanism(amount){
- const pose=wingMechanismPose(amount),targets=mechanismMotionTargets,dx=pose.rodOffsetX;
- targets.wing?.setAttribute('transform',`rotate(${pose.wingAngleDeg} 846 213)`);
- targets.rod?.setAttribute('transform',`translate(${dx} 0)`);
- targets.link?.setAttribute('transform',`translate(${dx} 0) rotate(${pose.linkAngleDeg} ${790-Math.sqrt(4000)} 213)`);
- targets['wing-motor']?.setAttribute('transform',`rotate(${dx*24} 125 186)`);
- targets['wing-thread']?.setAttribute('transform',`translate(${dx*2%15} 0)`);
-}
-function rotateMechanismTarget(id,angle){
- const target=mechanismMotionTargets[id];
- if(target)target.setAttribute('transform',`rotate(${angle%360} ${target.dataset.cx} ${target.dataset.cy})`);
-}
-function translateMechanismTarget(id,y){mechanismMotionTargets[id]?.setAttribute('transform',`translate(0 ${y})`);}
-function fadeMechanismTarget(id,opacity){mechanismMotionTargets[id]?.setAttribute('opacity',String(opacity));}
-function updateMechanismAnimation(){
- if(currentMechanism==='drive'){
-  const pose=driveMechanismPose(mechanismTime);
-  for(const id of ['motor','field','sun','carrier','wheel'])rotateMechanismTarget('drive-'+id,pose[id+'AngleDeg']);
-  for(let i=0;i<3;i++)rotateMechanismTarget('drive-planet-'+i,pose.planetAngleDeg);
-  fadeMechanismTarget('drive-electric',pose.electric);fadeMechanismTarget('drive-field',pose.field);
-  for(const target of mechanismPhaseTargets){
-   const phase=Number(target.dataset.phase)*Math.PI*2/3,brightness=(1+Math.cos(pose.fieldAngleDeg*Math.PI/180-phase))/2;
-   target.setAttribute('opacity',String(pose.electric*(target.classList.contains('mechanism-coil-phase')?brightness:.25+.75*brightness)));
-  }
-  mechanismMotionTargets['drive-road']?.setAttribute('stroke-dashoffset',String(pose.wheelAngleDeg*Math.PI/180*70%43));
- }else if(currentMechanism==='suction'){
-  const pose=suctionMechanismPose(mechanismTime);
-  for(let i=0;i<4;i++)rotateMechanismTarget('suction-fan-'+i,pose.fanAngleDeg);
-  translateMechanismTarget('suction-body',8*pose.compression);
-  fadeMechanismTarget('suction-air',pose.air);fadeMechanismTarget('suction-pressure',pose.compression);fadeMechanismTarget('suction-force',pose.compression);
- }else if(currentMechanism==='thrust'){
-  const pose=thrustMechanismPose(mechanismTime);
-  translateMechanismTarget('thrust-body',-34*pose.lift);translateMechanismTarget('thrust-valve',-38*pose.valve);
-  rotateMechanismTarget('thrust-motor',pose.valve*180);
-  fadeMechanismTarget('thrust-electric',pose.electric);fadeMechanismTarget('thrust-gas',pose.gas);fadeMechanismTarget('thrust-force',pose.gas);
- }else moveWingMechanism((1-Math.cos(mechanismTime*Math.PI/3))/2);
-}
-function syncMechanism(){
- const detail=$('mechanism-detail'),visible=state.device==='roadster'&&state.view==='circuit';
- detail.hidden=!visible;$('mechanism-jump').hidden=!visible;
- detail.classList.toggle('is-playing',visible&&mechanismPlaying);
- $('mechanism-play').innerHTML=playbackIcons[mechanismPlaying?'pause':'play'];
- $('mechanism-play').setAttribute('aria-label',mechanismPlaying?'一時停止':'再生');
- if(!visible)return;
- currentMechanism=mechanismForRole(state.selected,currentMechanism);
- const mechanism=mechanisms[currentMechanism];
- if(renderedMechanism!==currentMechanism){
-  $('mechanism-illustration').setAttribute('aria-label',mechanism.title+'のアニメーション');
-  $('mechanism-illustration').innerHTML=mechanismMarkup(currentMechanism);
-  mechanismTime=0;
-  mechanismMotionTargets=Object.fromEntries([...$('mechanism-illustration').querySelectorAll('[data-motion]')].map(el=>[el.dataset.motion,el]));
-  mechanismPhaseTargets=[...$('mechanism-illustration').querySelectorAll('[data-phase="0"],[data-phase="1"],[data-phase="2"]')];
-  updateMechanismAnimation();
-  renderedMechanism=currentMechanism;
- }
- for(const tab of document.querySelectorAll('[data-mechanism]'))tab.setAttribute('aria-pressed',String(tab.dataset.mechanism===currentMechanism));
-}
 function updateSelection(){
  clearHighlights();
- syncMechanism();
  for(const el of document.querySelectorAll('[data-part]')){
   const selected=el.dataset.part===state.selected;el.classList.toggle('selected',selected);if(el.tagName==='BUTTON')el.setAttribute('aria-pressed',String(selected));
  }
@@ -177,7 +111,6 @@ function updatePower(){
  const c=ensureCircuit(state.device);
  clearHighlights();
  for(const m of c.ledMeshes||[]){if(m.material?.emissive){m.material.emissive.setHex(0xffd249);m.material.emissiveIntensity=powered?2:0;}}
- c.root.traverse(o=>{if(o.userData.lever){if(o.userData.offX===undefined)o.userData.offX=o.position.x;o.position.x=o.userData.offX+(powered?.24:0);}});
  updateSelection();
 }
 const partColors={source:'#dc9735',switch:'#47799c',resistor:'#bb6546',led:'#cfad23',motor:'#647f94',controller:'#379566',fan:'#647f94',actuator:'#647f94',valve:'#b67c27',tank:'#b67c27',thruster:'#b67c27'};
@@ -201,7 +134,6 @@ function syncUI(){
  $('schematic').setAttribute('aria-label',`${devices[state.device].name}の回路図`);
 }
 function act(action){
- if(action.type==='DEVICE')currentMechanism='drive';
  const before=state;state=transition(state,action);
  if(action.type==='SELECT'){updateSelection();renderer.render(scene,camera);return;}
  if(action.type==='POWER'){updatePower();renderer.render(scene,camera);$('announcement').textContent=state.power?'オン':'オフ';return;}
@@ -211,15 +143,6 @@ function act(action){
  $('announcement').textContent=action.type==='TOGGLE_VIEW'?(state.view==='circuit'?'部品の回路と回路図':'製品'):action.type==='DISASSEMBLE'?'分解':action.type==='ASSEMBLE'?'組み立て':devices[state.device].name;
 }
 for(const b of document.querySelectorAll('[data-device]'))b.addEventListener('click',()=>act({type:'DEVICE',device:b.dataset.device}));
-const mechanismRoles={drive:'motor',suction:'fan',wing:'actuator',thrust:'valve'};
-for(const tab of document.querySelectorAll('[data-mechanism]'))tab.addEventListener('click',()=>{
- const id=tab.dataset.mechanism,role=mechanismRoles[id];if(!role)return;
- currentMechanism=id;
- if(state.selected!==role)act({type:'SELECT',role});else syncMechanism();
-});
-$('mechanism-jump').addEventListener('click',()=>{$('mechanism-detail').scrollIntoView({behavior:reducedMotion?'instant':'smooth',block:'start'});$('mechanism-illustration').focus({preventScroll:true});});
-$('mechanism-play').addEventListener('click',()=>{mechanismPlaying=!mechanismPlaying;syncMechanism();});
-$('mechanism-replay').addEventListener('click',()=>{renderedMechanism=null;mechanismPlaying=true;syncMechanism();});
 $('disassemble').addEventListener('click',()=>act({type:state.view==='model'&&(state.direction>0||(state.direction===0&&state.progress>0))?'ASSEMBLE':'DISASSEMBLE'}));$('view-toggle').addEventListener('click',()=>act({type:'TOGGLE_VIEW'}));
 function activatePart(role){if(role==='switch'&&canOperate(state))act({type:'POWER'});else if(state.view==='circuit'||state.progress>0)act({type:'SELECT',role});}
 document.addEventListener('click',e=>{const el=e.target.closest('[data-part]');if(el)activatePart(el.dataset.part);});
@@ -249,9 +172,6 @@ function render(now){
   if(!state.direction){syncUI();updateSelection();$('announcement').textContent=state.progress===1?'分解完了':'戻りました';}
  }
  if(state.power&&canOperate(state)&&!reducedMotion){const model=activeModel();if(model.animate)model.animate(now/1000,dt,true);else for(const rotor of model.rotors||[])rotor.rotation[rotor.userData.axis||'y']+=dt*15;}
- if(state.device==='roadster'&&state.view==='circuit'&&mechanismPlaying){
-  mechanismTime+=dt;updateMechanismAnimation();
- }
  controls.update();scene.updateMatrixWorld(true);
  const occupied=[];
  for(const {part,el,line}of labelEntries){

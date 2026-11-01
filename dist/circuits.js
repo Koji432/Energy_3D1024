@@ -35,7 +35,7 @@ function wire(parent, points, material, radius = .045) {
 export function createCircuit(deviceId) {
   const root = new THREE.Group();
   root.name = `${deviceId}-circuit`;
-  const parts = [], rotors = [], ledMeshes = [];
+  const parts = [], rotors = [], ledMeshes = [], switchControls = [];
   const hooks = {};
   const materials = {
     red: mat(0xe45c4a), black: mat(0x273e4b), metal: mat(0xd6e1e4, .8, .24),
@@ -84,14 +84,22 @@ export function createCircuit(deviceId) {
     return group;
   }
 
-  function slideSwitch(x = -.35, z = -2.05) {
+  function powerSwitch(x = -.35, z = -2.05) {
     const group = part('switch', 'スイッチ', x, z, V(0, .8, -.15));
     box(group, [.86, .22, .5], materials.dark, [0, .24, 0]);
     box(group, [.66, .035, .36], materials.metal, [0, .369, 0]);
-    const lever = box(group, [.3, .2, .3], materials.blue, [-.14, .48, 0]);
-    lever.userData.lever = true;
-    for (let i = 0; i < 3; i++) {
-      box(lever, [.025, .018, .23], materials.white, [-.075 + i * .075, .105, 0]);
+    if (deviceId === 'flashlight' || deviceId === 'cleaner') {
+      cylinder(group, .3, .09, materials.dark, [0, .414, 0]);
+      const button = cylinder(group, .235, .16, materials.blue.clone(), [0, .51, 0]);
+      button.name = `${deviceId}-circuit-push-button`;
+      button.userData.powerControl = true;
+      switchControls.push({object:button, axis:'y', rest:.51, travel:-.075});
+    } else {
+      const lever = box(group, [.3, .2, .3], materials.blue, [-.14, .48, 0]);
+      switchControls.push({object:lever, axis:'x', rest:-.14, travel:.24});
+      for (let i = 0; i < 3; i++) {
+        box(lever, [.025, .018, .23], materials.white, [-.075 + i * .075, .105, 0]);
+      }
     }
     box(group, [.17, .12, .24], materials.copper, [-.5, y, 0]);
     box(group, [.17, .12, .24], materials.copper, [.5, y, 0]);
@@ -213,7 +221,7 @@ export function createCircuit(deviceId) {
     }
 
     battery(-3.55, 0, true);
-    slideSwitch(-2.1, -2.3);
+    powerSwitch(-2.1, -2.3);
     const board = part('controller', '制御基板', -.4, -2.3, V(0, .8, -.15));
     box(board, [1.13, .12, .73], materials.green, [0, .25, 0]);
     box(board, [.39, .16, .35], materials.dark, [0, .39, 0]);
@@ -299,7 +307,7 @@ export function createCircuit(deviceId) {
     const motorPositions = vacuum ? [-.4, 1.3, 3] : vibration ? [.45, 2.85] : [-.75, .55, 1.85, 3.15];
     const lastMotor = motorPositions.at(-1);
     battery(-3.2, .3, true);
-    slideSwitch(-1.55, -2.05);
+    powerSwitch(-1.55, -2.05);
     const board = part('controller', '制御基板', .25, -2.05, V(0, .8, -.15));
     box(board, [1.13, .12, .73], materials.green, [0, .25, 0]);
     box(board, [.39, .16, .35], materials.dark, [0, .39, 0]);
@@ -324,14 +332,14 @@ export function createCircuit(deviceId) {
     box(source, [.88, .18, 1.12], materials.white, [0, .82, 0]);
     for (const x of [-.22, .22]) box(source, [.12, .08, .43], materials.metal, [x, .45, -.74]);
     box(source, [.6, .08, .25], materials.dark, [0, .95, 0]);
-    slideSwitch();
+    powerSwitch();
     motor('motor', 'モーター', 3.05, 0, false, deviceId === 'cleaner' ? 'blower' : 'propeller');
     cable([[-3.1, -.75], [-3.1, -2.05], [-.85, -2.05]]);
     cable([[.15, -2.05], [3.05, -2.05], [3.05, -.62]]);
     cable([[3.05, .62], [3.05, 2.05], [-3.1, 2.05], [-3.1, .58]], 'black');
   } else {
     battery();
-    slideSwitch();
+    powerSwitch();
     resistor();
     led();
     cable([[-3.1, -1.1], [-3.1, -2.05], [-.85, -2.05]]);
@@ -343,7 +351,14 @@ export function createCircuit(deviceId) {
   for (const { group, role } of parts) {
     group.traverse(object => { if (object.isMesh) object.userData.part = role; });
   }
-  return { root, parts, rotors, ledMeshes, focus: V(0, .25, 0), ...hooks };
+  const operate = hooks.setPowered;
+  function setPowered(on) {
+    const powered = Boolean(on);
+    operate?.(powered);
+    for (const control of switchControls) control.object.position[control.axis] = control.rest + (powered ? control.travel : 0);
+  }
+  setPowered(false);
+  return { root, parts, rotors, ledMeshes, focus: V(0, .25, 0), ...hooks, setPowered };
 }
 
 const label = (text, x, y, size = 28) => `<text class="symbol-label" x="${x}" y="${y}" text-anchor="middle" fill="currentColor" stroke="none" style="font-size:${size}px" font-family="sans-serif">${text}</text>`;
