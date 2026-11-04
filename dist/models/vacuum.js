@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {createExplodedWiring} from './exploded-wiring.js';
 
 export function createVacuum() {
   const root = new THREE.Group();
@@ -87,12 +88,10 @@ export function createVacuum() {
     seam.rotation.y = a - Math.PI / 2;
   }
 
-  const source = part('source', 'source', '電源', [-1.08, .025, -.55], [-1.0, 1.65, -2.65], .2, .76, [0, .65, 0]);
+  const source = part('source', 'source', '電源', [-1.08, .025, -.55], [-.2, 2.1, -3.7], .2, .76, [0, .65, 0]);
   box(source, [1.5, .34, .71], m.battery);
   for (const x of [-.49, .49]) box(source, [.11, .354, .73], m.black, x);
   for (const x of [-.62, .62]) box(source, [.12, .08, .14], m.copper, x, .19, -.26);
-  tube(source, [[.62, .17, -.22], [.9, .24, -.2], [1.04, .12, .18]], .026, m.red);
-  tube(source, [[-.62, .17, -.22], [-.9, .2, -.2], [-.98, .08, .18]], .025, m.black);
 
   const board = part('controller', 'controller', '制御基板', [.7, .045, -.6], [1.25, 2.65, -1.75], .25, .8, [0, .65, 0]);
   box(board, [1.42, .075, 1.15], m.board);
@@ -105,12 +104,16 @@ export function createVacuum() {
   for (const [x, z] of [[-.52, -.42], [.52, -.42], [-.52, .42], [.52, .42]]) cylinder(board, .047, .04, m.copper, x, .055, z);
   for (const x of [.35, .53]) cylinder(board, .065, .2, m.brushed, x, .14, -.25);
   box(board, [.3, .12, .18], m.white, -.46, .09, -.36);
+  // Power input and the controlled output bus remain on the board itself.
+  box(board, [.14, .08, .16], m.copper, -.62, .08, -.4);
+  box(board, [.14, .08, .16], m.copper, .5, .08, .48);
 
   const sw = part('switch', 'switch', 'スイッチ', [0, .51, 0], [.05, 4.0, .2], .23, .78, [0, .6, 0]);
   cylinder(sw, .36, .045, m.glossy);
   ring(sw, .38, .025, m.silver, 0, .005, 0);
   const powerMaterial = material(0x404c48, .28, .4);
   const powerRing = ring(sw, .315, .012, powerMaterial, 0, .03, 0);
+  for (const x of [-.2, .2]) box(sw, [.12, .08, .14], m.copper, x, -.18, -.12);
   // Small geometric lettering keeps the power button clear without loading fonts.
   const letters = {
     C: [[.075, -.06], [.01, -.06], [-.025, -.03], [-.025, .035], [.01, .06], [.075, .06]],
@@ -132,7 +135,7 @@ export function createVacuum() {
     box(group, [.55, .33, .8], m.black, -side * .22, .03, 0);
     const can = cylinder(group, .215, .64, m.silver, -side * .5, .07, -.12); can.rotation.z = Math.PI / 2;
     cylinder(group, .1, .05, m.copper, -side * .84, .07, -.12).rotation.z = Math.PI / 2;
-    const wheel = new THREE.Group(); wheel.position.set(side * .1, -.08, 0); group.add(wheel);
+    const wheel = new THREE.Group(); wheel.name = `${id}-wheel-rotor`; wheel.position.set(side * .1, -.08, 0); group.add(wheel);
     cylinder(wheel, .44, .26, m.rubber).rotation.z = Math.PI / 2;
     cylinder(wheel, .23, .275, m.brushed).rotation.z = Math.PI / 2;
     for (let i = 0; i < 20; i++) {
@@ -140,24 +143,26 @@ export function createVacuum() {
       const tread = box(wheel, [.285, .055, .11], m.edge, 0, Math.cos(a) * .429, Math.sin(a) * .429);
       tread.rotation.x = a;
     }
-    tube(group, [[-side * .7, .05, -.26], [-side * .98, .18, -.45], [-side * 1.05, .05, -.65]], .023, m.red);
+    box(group, [.12, .1, .12], m.copper, -side * .56, .18, -.24);
+    box(group, [.12, .1, .12], m.copper, -side * .78, .18, -.02);
     wheelRotors.push(wheel);
+    return group;
   }
-  driveMotor('motor1', -1, [-1.8, .75, 2.9]);
-  driveMotor('motor2', 1, [2.55, .75, 2.9]);
+  const leftMotor = driveMotor('motor1', -1, [-1.8, .75, 2.9]);
+  const rightMotor = driveMotor('motor2', 1, [2.55, .75, 2.9]);
 
   const suction = part('motor3', 'motor3', 'モーター3', [.65, .02, 1.25], [4.25, 1.6, .1], .3, .9, [0, 1.0, 0]);
   cylinder(suction, .38, .4, m.silver, 0, -.03, 0);
   cylinder(suction, .64, .08, m.black, 0, .19, 0);
   ring(suction, .59, .055, m.brushed, 0, .31, 0);
-  const blower = new THREE.Group(); blower.position.y = .25; suction.add(blower);
+  const blower = new THREE.Group(); blower.name = 'vacuum-suction-rotor'; blower.position.y = .25; suction.add(blower);
   cylinder(blower, .14, .09, m.copper);
   for (let i = 0; i < 10; i++) {
     const a = i * Math.PI / 5;
     const vane = box(blower, [.28, .1, .055], m.silver, Math.cos(a) * .37, 0, Math.sin(a) * .37);
     vane.rotation.y = -a - .35;
   }
-  tube(suction, [[-.2, -.1, 0], [-.5, -.03, .15], [-.66, .08, .3]], .023, m.red);
+  for (const x of [-.24, .24]) box(suction, [.12, .1, .12], m.copper, x, .07, -.28);
 
   const tray = part('dust-tray', null, '集じん容器', [0, -.04, -1.85], [.6, .8, -4.1], .12, .68);
   box(tray, [2.15, .35, .8], m.clear);
@@ -167,12 +172,12 @@ export function createVacuum() {
   box(tray, [.55, .1, .12], m.brushed, 0, .08, -.44);
 
   const brush = part('brush', null, 'ブラシ', [0, -.38, .8], [.1, .3, 4.8], .34, .95);
-  const roller = cylinder(brush, .19, 2.2, m.rubber, 0, 0, .2); roller.rotation.z = Math.PI / 2;
+  const roller = cylinder(brush, .19, 2.2, m.rubber, 0, 0, .2); roller.name = 'vacuum-main-brush'; roller.rotation.z = Math.PI / 2;
   for (let i = 0; i < 19; i++) {
     const band = ring(brush, .19, .027, m.bristle, -1.02 + i * .114, 0, .2);
     band.rotation.set(0, Math.PI / 2, 0);
   }
-  const sideBrush = new THREE.Group(); sideBrush.position.set(-2.13, -.02, .45); brush.add(sideBrush);
+  const sideBrush = new THREE.Group(); sideBrush.name = 'vacuum-side-brush'; sideBrush.position.set(-2.13, -.02, .45); brush.add(sideBrush);
   cylinder(sideBrush, .16, .09, m.brushed);
   for (let i = 0; i < 3; i++) {
     const arm = new THREE.Group(); arm.rotation.y = i * Math.PI * 2 / 3; sideBrush.add(arm);
@@ -181,6 +186,47 @@ export function createVacuum() {
   }
 
   for (const item of parts) if (item.role) item.group.traverse(object => { if (object.isMesh) object.userData.part = item.role; });
+  const terminal = (id, node, group, position, polarity) => ({id, node, role: node, partId: node, group, position, ...(polarity ? {polarity} : {})});
+  const motorTerminals = (id, group, input, output) => [
+    terminal(`${id}-input`, id, group, input), terminal(`${id}-return`, id, group, output),
+  ];
+  const connections = createExplodedWiring({root, radius: .038,
+    terminals: [
+      terminal('source-positive', 'source', source, V(.62, .23, -.26), 'positive'),
+      terminal('source-negative', 'source', source, V(-.62, .23, -.26), 'negative'),
+      terminal('switch-input', 'switch', sw, V(-.2, -.14, -.12)),
+      terminal('switch-output', 'switch', sw, V(.2, -.14, -.12)),
+      terminal('controller-input', 'controller', board, V(-.62, .12, -.4)),
+      terminal('controller-output', 'controller', board, V(.5, .12, .48)),
+      ...motorTerminals('motor1', leftMotor, V(.56, .23, -.24), V(.78, .23, -.02)),
+      ...motorTerminals('motor2', rightMotor, V(-.56, .23, -.24), V(-.78, .23, -.02)),
+      ...motorTerminals('motor3', suction, V(.24, .12, -.28), V(-.24, .12, -.28)),
+    ],
+    components: [
+      {id: 'source', kind: 'battery', terminals: ['source-positive', 'source-negative']},
+      {id: 'switch', kind: 'switch', terminals: ['switch-input', 'switch-output']},
+      {id: 'controller', kind: 'controller', terminals: ['controller-input', 'controller-output']},
+      ...['motor1', 'motor2', 'motor3'].map(id => ({id, kind: 'motor', terminals: [`${id}-input`, `${id}-return`]})),
+    ],
+    leads: [
+      {id: 'battery-feed', from: 'source-positive', to: 'switch-input', color: 'supply', route: (a, b) => {
+        const y = Math.max(a.y, b.y) + .4, z = Math.min(a.z, b.z) - .65;
+        return [a, a.clone().add(V(.23, .18, -.3)), V(a.x + .4, y, z), V(b.x - .4, y, z), b.clone().add(V(-.28, .12, -.25)), b];
+      }},
+      {id: 'controller-feed', from: 'switch-output', to: 'controller-input', color: 'supply', route: (a, b) => {
+        const y = Math.max(a.y, b.y) + .55, x = Math.max(a.x, b.x) + .7;
+        return [a, a.clone().add(V(.3, .2, .12)), V(x, y, Math.max(a.z, b.z) + .4), b.clone().add(V(.25, .2, -.25)), b];
+      }},
+      ...['motor1', 'motor2', 'motor3'].map((id, i) => ({id: `${id}-feed`, from: 'controller-output', to: `${id}-input`, color: 'supply', route: (a, b) => {
+        const y = Math.max(a.y, b.y) + .4 + i * .25, z = Math.max(a.z, b.z) + .65 + i * .25;
+        return [a, a.clone().add(V((i - 1) * .25, .2 + i * .12, .3)), V(a.x, y, z), V(b.x, y, z), b.clone().add(V(0, .2, -.3)), b];
+      }})),
+      ...['motor1', 'motor2', 'motor3'].map((id, i) => ({id: `${id}-return`, from: `${id}-return`, to: 'source-negative', color: 'return', route: (a, b) => {
+        const y = Math.max(a.y, b.y) + .35 + i * .22, z = Math.max(a.z, b.z) + 1.5 + i * .3, x = b.x - .65 - i * .3;
+        return [a, a.clone().add(V(i === 1 ? .35 : -.2, .15, .4)), V(a.x, y, z), V(x, y, z), V(x, b.y + .35, b.z - .25), b.clone().add(V(-.25, .1, 0)), b];
+      }})),
+    ],
+  });
   let travelPhase = 0;
   function setPowered(on) {
     const set = mat => {
@@ -197,9 +243,7 @@ export function createVacuum() {
     root.position.set(Math.sin(travelPhase) * .52, 0, Math.sin(travelPhase * 1.4) * .3);
     root.rotation.y = Math.sin(travelPhase * .8) * .15;
     for (const wheel of wheelRotors) wheel.rotation.x += dt * 2.4;
-    sideBrush.rotation.y += dt * 9;
     blower.rotation.y += dt * 17;
-    roller.rotation.x += dt * 6;
   }
-  return { root, parts, rotors: [], focus: V(0, 0, 0), floorY: -.74, viewDirection: V(.45, .95, 1), setPowered, animate };
+  return { root, parts, rotors: [], focus: V(0, 0, 0), floorY: -.74, viewDirection: V(.45, .95, 1), setPowered, animate, connections, updateConnections: connections.updateConnections };
 }

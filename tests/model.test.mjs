@@ -25,6 +25,19 @@ test('animation settles at both endpoints at differing frame rates',()=>{
  for(const fps of [20,30,60,120]){let p=0,d=1;for(let i=0;i<fps*4;i++){const n=animationStep(p,d,1/fps);p=n.value;d=n.direction;}assert.equal(p,1);assert.equal(d,0);d=-1;for(let i=0;i<fps*4;i++){const n=animationStep(p,d,1/fps);p=n.value;d=n.direction;}assert.equal(p,0);assert.equal(d,0);}
 });
 test('parts from other devices cannot become selected',()=>assert.equal(transition({...initialState(),device:'cleaner'},{type:'SELECT',role:'led'}).selected,null));
+test('name visibility toggles without changing the circuit or motion and persists between devices',()=>{
+ const running={...initialState(),device:'vacuum',view:'circuit',progress:1,power:true,selected:'motor2'};
+ const hidden=transition(running,{type:'TOGGLE_NAMES'});
+ assert.deepEqual(hidden,{...running,namesVisible:false});
+ assert.deepEqual(transition(hidden,{type:'TOGGLE_NAMES'}),running);
+ const moving={...initialState(),progress:.45,direction:1,namesVisible:false};
+ assert.deepEqual(transition(moving,{type:'TOGGLE_NAMES'}),{...moving,namesVisible:true});
+ for(const device of Object.keys(devices)){
+  const switched=transition(hidden,{type:'DEVICE',device});
+  assert.equal(switched.namesVisible,false);
+  for(const type of ['TOGGLE_VIEW','DISASSEMBLE','ASSEMBLE','POWER','SELECT'])assert.equal(transition(switched,{type,role:'source'}).namesVisible,false);
+ }
+});
 test('disassemble after circuit view replays the full animation',()=>{
  const s=transition({...initialState(),view:'circuit',progress:1,power:true},{type:'DISASSEMBLE'});assert.equal(s.progress,0);assert.equal(s.direction,1);assert.equal(s.power,false);
 });

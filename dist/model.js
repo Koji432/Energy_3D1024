@@ -12,10 +12,11 @@ export const devices = {
 };
 export const partNames={source:'電源',switch:'スイッチ',resistor:'抵抗',led:'LED',motor:'モーター',controller:'制御基板',motor1:'モーター1',motor2:'モーター2',motor3:'モーター3',motor4:'モーター4',fan:'吸引ファン',actuator:'翼の駆動部',valve:'電動バルブ',tank:'ガスタンク',thruster:'ノズル'};
 export const canOperate = state => state.view==='circuit'||(state.view==='model'&&state.progress===0&&state.direction===0);
-export const initialState = () => ({device:'flashlight',view:'model',progress:0,direction:0,power:false,selected:null});
+export const initialState = () => ({device:'flashlight',view:'model',progress:0,direction:0,power:false,selected:null,namesVisible:true});
 export function transition(state, action) {
   switch(action.type){
-    case 'DEVICE': return devices[action.device] ? {...initialState(),device:action.device} : state;
+    case 'DEVICE': return devices[action.device] ? {...initialState(),device:action.device,namesVisible:state.namesVisible} : state;
+    case 'TOGGLE_NAMES': return {...state,namesVisible:!state.namesVisible};
     case 'DISASSEMBLE': return {...state,view:'model',progress:state.view==='circuit'?0:state.progress,direction:state.view==='circuit'||state.progress<1?1:0,power:false};
     case 'ASSEMBLE': return {...state,view:'model',direction:state.progress>0?-1:0,power:false,selected:null};
     case 'TOGGLE_VIEW': return {...state,view:state.view==='model'?'circuit':'model',progress:state.view==='circuit'?0:state.progress,direction:0,power:false,selected:null};

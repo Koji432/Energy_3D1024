@@ -120,3 +120,87 @@ test('cleaner pushbutton depresses inward, stays clickable, and returns after sw
     assert.equal(model.connections.root.visible,false,'Assembled wires must remain hidden when pressing the button');
   }
 });
+
+test('cleaner motor contacts feed its fixed winding through the same moving motor assembly',()=>{
+  const model=createCleaner(),motor=model.parts.find(part=>part.id==='motor').group;
+  const winding=model.root.getObjectByName('cleaner-motor-winding');
+  assert.equal(winding?.parent,motor,'The visible winding must belong to the wired motor, not to another decorative part');
+  assert.ok(winding.material.metalness>=.5);
+  model.root.position.set(.8,-.6,1.3);model.root.rotation.set(.1,-.2,.15);
+  const curve=winding.geometry.parameters.path;
+  for(const progress of [0,.3,.6,1,.4,0]) {
+    move(model,progress);model.root.updateWorldMatrix(true,true);
+    for(const [end,id]of [[0,'motor-input'],[1,'motor-return']]) {
+      const contact=model.connections.terminals.find(terminal=>terminal.id===id).anchor.getWorldPosition(new THREE.Vector3());
+      const coilEnd=curve.getPoint(end).applyMatrix4(winding.matrixWorld);
+      assert.ok(contact.distanceTo(coilEnd)<1e-8,`${id} disconnects from the winding at ${progress}`);
+    }
+  }
+});
+
+test('cleaner electrically driven rotor, shaft and suction impeller are physically joined on one axis',()=>{
+  const model=createCleaner(),motor=model.parts.find(part=>part.id==='motor').group;
+  const train=model.root.getObjectByName('cleaner-motor-drive-train');
+  const rotor=model.root.getObjectByName('cleaner-motor-rotor');
+  const shaft=model.root.getObjectByName('cleaner-motor-shaft');
+  const hub=model.root.getObjectByName('cleaner-blower-hub');
+  assert.equal(train?.parent,motor);assert.deepEqual(model.rotors,[train]);
+  for(const component of [rotor,shaft,hub])assert.equal(component?.parent,train);
+  assert.equal(rotor.position.x,shaft.position.x);assert.equal(rotor.position.z,shaft.position.z);
+  assert.equal(hub.position.x,shaft.position.x);assert.equal(hub.position.z,shaft.position.z);
+  for(const progress of [0,.5,1]) {
+    move(model,progress);model.root.updateWorldMatrix(true,true);
+    const shaftBox=new THREE.Box3().setFromObject(shaft);
+    assert.ok(shaftBox.intersectsBox(new THREE.Box3().setFromObject(rotor)),'The shaft floats above its driving rotor');
+    assert.ok(shaftBox.intersectsBox(new THREE.Box3().setFromObject(hub)),'The impeller is disconnected from its shaft');
+  }
+  move(model,0);model.root.updateWorldMatrix(true,true);
+  const before=rotor.getWorldQuaternion(new THREE.Quaternion());
+  model.setPowered(true);for(let frame=0;frame<20;frame++)model.animate(frame/60,1/60,true);
+  model.root.updateWorldMatrix(true,true);
+  const after=rotor.getWorldQuaternion(new THREE.Quaternion());
+  assert.ok(before.angleTo(after)>.1,'Electrical power never reaches the driving rotor');
+  assert.ok(after.angleTo(hub.getWorldQuaternion(new THREE.Quaternion()))<1e-8,'The motor and impeller do not share their rotation');
+});
+
+test('cleaner passive brushes stay still, and the motor cannot rotate after electrical power is switched off',()=>{
+  const model=createCleaner(),brushes=model.parts.find(part=>part.id==='brushes').group;
+  const train=model.root.getObjectByName('cleaner-motor-drive-train');
+  const winding=model.root.getObjectByName('cleaner-motor-winding');
+  const rotations=group=>{const result=[];group.traverse(object=>result.push(...object.quaternion.toArray()));return result;};
+  const brushRotations=rotations(brushes),fixedWindingRotation=winding.quaternion.toArray();
+  const passive=[];brushes.traverse(object=>{if(object.userData.passive)passive.push(object);});
+  assert.equal(passive.length,2);assert.ok(passive.every(object=>!model.rotors.includes(object)));
+  model.setPowered(true);for(let frame=0;frame<60;frame++)model.animate(frame/60,1/60,true);
+  assert.deepEqual(rotations(brushes),brushRotations,'Unconnected brushes must not appear electrically driven');
+  assert.deepEqual(winding.quaternion.toArray(),fixedWindingRotation,'The fixed electrical winding must not spin with the shaft');
+  model.setPowered(false);const stopped=train.quaternion.toArray();
+  for(let frame=0;frame<10;frame++)model.animate(2+frame/60,1/60,true);
+  assert.deepEqual(train.quaternion.toArray(),stopped,'A true animation flag must not bypass the actual power state');
+  model.setPowered(true);model.animate(3,.1,false);
+  assert.deepEqual(train.quaternion.toArray(),stopped,'A disabled animation frame must not advance the shaft');
+});
+
+test('all cleaner impeller vanes join their rotating hub through a backplate clear of the fixed casing',()=>{
+  const model=createCleaner(),train=model.root.getObjectByName('cleaner-motor-drive-train');
+  const backplate=model.root.getObjectByName('cleaner-impeller-backplate');
+  const hub=model.root.getObjectByName('cleaner-blower-hub');
+  const casing=model.root.getObjectByName('cleaner-fixed-blower-plate');
+  assert.equal(backplate?.parent,train);
+  model.root.updateWorldMatrix(true,true);
+  const plateBox=new THREE.Box3().setFromObject(backplate);
+  assert.ok(plateBox.intersectsBox(new THREE.Box3().setFromObject(hub)),'The support disk floats away from its hub');
+  assert.ok(plateBox.min.y>new THREE.Box3().setFromObject(casing).max.y,'The rotating support disk intersects the fixed casing');
+  assert.ok(new THREE.Box3().setFromObject(hub).min.y>new THREE.Box3().setFromObject(casing).max.y,'The hub rubs against the fixed casing');
+  const vanes=train.children.filter(object=>object.name.startsWith('cleaner-impeller-vane-'));
+  assert.equal(vanes.length,9);
+  for(const vane of vanes){
+    assert.equal(vane.parent,train);
+    assert.ok(plateBox.intersectsBox(new THREE.Box3().setFromObject(vane)),`${vane.name} floats above its support`);
+    const vertices=vane.geometry.attributes.position,point=new THREE.Vector3();
+    for(let i=0;i<vertices.count;i++){
+      point.fromBufferAttribute(vertices,i).applyMatrix4(vane.matrixWorld);train.worldToLocal(point);
+      assert.ok(Math.hypot(point.x,point.z)<backplate.geometry.parameters.radiusTop,'A vane extends beyond its support disk');
+    }
+  }
+});

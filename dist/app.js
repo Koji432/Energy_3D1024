@@ -6,7 +6,7 @@ import {createFan} from './models/fan.js';
 import {createCleaner} from './models/cleaner.js';
 import {createController} from './models/controller.js';
 import {createVacuum} from './models/vacuum.js';
-import {circuitIcon,productIcon,deviceIcons,disassembleIcon,assembleIcon} from './icons.js';
+import {circuitIcon,productIcon,deviceIcons,disassembleIcon,assembleIcon,namesIcon,namesHiddenIcon} from './icons.js';
 import {createDrone} from './models/drone.js';
 import {createRoadster} from './models/roadster.js';
 import {createCircuit,diagramMarkup} from './circuits.js';
@@ -122,10 +122,14 @@ function buildDiagram(){
 }
 function syncUI(){
  document.body.classList.toggle('circuit-view',state.view==='circuit');document.body.classList.toggle('drone-view',state.device==='drone');document.body.classList.toggle('roadster-view',state.device==='roadster');
+ document.body.classList.toggle('names-hidden',!state.namesVisible);
+ $('names-toggle').innerHTML=state.namesVisible?namesIcon:namesHiddenIcon;
+ $('names-toggle').setAttribute('aria-label',state.namesVisible?'部品名を非表示':'部品名を表示');$('names-toggle').setAttribute('aria-pressed',String(state.namesVisible));
+ $('labels').hidden=!state.namesVisible;$('app').dataset.names=state.namesVisible?'shown':'hidden';
  $('model-title').textContent=state.device==='roadster'?'部品と機構':'部品の回路';$('diagram-panel').querySelector('h2').textContent=state.device==='roadster'?'回路・機構図':'回路図';
  $('view-toggle').innerHTML=state.view==='circuit'?productIcon:circuitIcon;
  $('view-toggle').setAttribute('aria-label',state.view==='circuit'?'電気製品を表示':'電気回路を表示');$('view-toggle').setAttribute('aria-pressed',String(state.view==='circuit'));
- $('diagram-panel').hidden=state.view!=='circuit';$('model-title').hidden=state.view!=='circuit';$('part-buttons').hidden=state.view!=='circuit';
+ $('diagram-panel').hidden=state.view!=='circuit';$('model-title').hidden=state.view!=='circuit';$('part-buttons').hidden=state.view!=='circuit'||!state.namesVisible;
  const assembling=state.view==='model'&&(state.direction>0||(state.direction===0&&state.progress>0));
  $('disassemble').innerHTML=assembling?assembleIcon:disassembleIcon;$('disassemble').setAttribute('aria-label',assembling?'組み立て':'分解');
  $('app').dataset.device=state.device;$('app').dataset.view=state.view;
@@ -135,6 +139,7 @@ function syncUI(){
 }
 function act(action){
  const before=state;state=transition(state,action);
+ if(action.type==='TOGGLE_NAMES'){syncUI();$('announcement').textContent=state.namesVisible?'部品名を表示':'部品名を非表示';return;}
  if(action.type==='SELECT'){updateSelection();renderer.render(scene,camera);return;}
  if(action.type==='POWER'){updatePower();renderer.render(scene,camera);$('announcement').textContent=state.power?'オン':'オフ';return;}
  clearHighlights();manualView=false;showActive();
@@ -144,6 +149,7 @@ function act(action){
 }
 for(const b of document.querySelectorAll('[data-device]'))b.addEventListener('click',()=>act({type:'DEVICE',device:b.dataset.device}));
 $('disassemble').addEventListener('click',()=>act({type:state.view==='model'&&(state.direction>0||(state.direction===0&&state.progress>0))?'ASSEMBLE':'DISASSEMBLE'}));$('view-toggle').addEventListener('click',()=>act({type:'TOGGLE_VIEW'}));
+$('names-toggle').addEventListener('click',()=>act({type:'TOGGLE_NAMES'}));
 function activatePart(role){if(role==='switch'&&canOperate(state))act({type:'POWER'});else if(state.view==='circuit'||state.progress>0)act({type:'SELECT',role});}
 document.addEventListener('click',e=>{const el=e.target.closest('[data-part]');if(el)activatePart(el.dataset.part);});
 $('schematic').addEventListener('keydown',e=>{const el=e.target.closest('[data-part]');if(el&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(!e.repeat)activatePart(el.dataset.part);}});
@@ -175,7 +181,7 @@ function render(now){
  controls.update();scene.updateMatrixWorld(true);
  const occupied=[];
  for(const {part,el,line}of labelEntries){
-  const show=state.view==='circuit'||state.progress>.72;el.style.opacity=show?'1':'0';line.style.opacity=show?'1':'0';if(!show)continue;
+  const show=state.namesVisible&&(state.view==='circuit'||state.progress>.72);el.style.opacity=show?'1':'0';line.style.opacity=show?'1':'0';if(!show)continue;
   if(part.labelOffset){labelPoint.copy(part.group.position).add(part.labelOffset);}else{partBox.setFromObject(part.group);partBox.getCenter(labelPoint);labelPoint.y=partBox.max.y+.35;}
   projected.copy(labelPoint).project(camera);
   const x=(projected.x*.5+.5)*viewport.clientWidth,y=(-projected.y*.5+.5)*viewport.clientHeight;

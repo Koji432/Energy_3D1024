@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import {createExplodedWiring} from './exploded-wiring.js';
 
 // The brush opening, collection bag and blower remain separate in the exploded view.
+// Panasonic's MC-330EP pages confirm collection/filter bags, but do not document
+// a powered brush drive. Only the directly coupled suction impeller is powered;
+// its visible motor cutaway is an educational representation, not a service diagram.
 export function createCleaner() {
   const root = new THREE.Group();
   root.name = 'blackboard-eraser-cleaner';
@@ -134,19 +137,18 @@ export function createCleaner() {
   roundedBox(brushes, 3.94, .14, 1.04, .08, black, 0, -.12, 0);
   for (const z of [-.245, .245]) {
     const rollerPivot = new THREE.Group();
-    rollerPivot.name = z < 0 ? 'cleaner-back-brush-rotor' : 'cleaner-front-brush-rotor';
+    rollerPivot.name = z < 0 ? 'cleaner-back-passive-brush' : 'cleaner-front-passive-brush';
     rollerPivot.position.set(0, .105, z);
     rollerPivot.userData.axis = 'x';
-    rollerPivot.userData.speed = z < 0 ? 8.5 : -8.5;
+    rollerPivot.userData.passive = true;
     brushes.add(rollerPivot);
-    rotors.push(rollerPivot);
     const roller = cylinder(rollerPivot, .15, 3.48, bristle, 0, 0, 0, 40);
     roller.rotation.z = Math.PI / 2;
     for (let i = 0; i < 38; i++) {
       const rib = add(rollerPivot, new THREE.TorusGeometry(.148, .01, 5, 28), bristle, -1.7 + i * .092, 0, 0);
       rib.rotation.y = Math.PI / 2;
     }
-    // Fine longitudinal bristle rows make the brush's rotation visible.
+    // The unpowered brush surface stays still when the suction motor runs.
     for (const a of [0, 1.9, 4.1]) {
       const row = cylinder(rollerPivot, .009, 3.4, creamEdge, 0, Math.cos(a) * .154, Math.sin(a) * .154, 8);
       row.rotation.z = Math.PI / 2;
@@ -156,25 +158,62 @@ export function createCleaner() {
       axle.rotation.z = Math.PI / 2;
     }
   }
-  tube(brushes, [[-1.85, -.17, -.38], [-1.4, -.37, -.39], [-.7, -.48, -.4]], .055, black);
-
-  // A centrifugal blower, with its impeller and electric motor both visible.
+  // Fixed winding and rotating shaft form one visible, directly coupled motor.
   const motor = part('motor', 'motor', 'モーター', V(.95, -.42, -.18), V(3.7, .45, .6), .3, .9, V(.2, 1.1, .2));
-  cylinder(motor, .45, .82, silver, 0, -.3, 0);
+  const cutawayMetal = silver.clone(); cutawayMetal.side = THREE.DoubleSide;
+  const motorSleeve = add(motor, new THREE.CylinderGeometry(.45, .45, .82, 48, 1, true, .65, Math.PI * 1.18), cutawayMetal, 0, -.3, 0);
+  motorSleeve.name = 'cleaner-motor-cutaway';
   cylinder(motor, .465, .11, black, 0, -.73, 0);
-  cylinder(motor, .34, .09, copper, 0, .14, 0);
-  cylinder(motor, .73, .1, black, 0, .23, 0);
+  for (const [radius, y] of [[.37, .12], [.12, .14]]) {
+    const bearing = add(motor, new THREE.TorusGeometry(radius, .026, 8, 48), silver, 0, y, 0);
+    bearing.rotation.x = Math.PI / 2;
+  }
+  const blowerFloor = new THREE.Shape(); blowerFloor.absarc(0, 0, .73, 0, Math.PI * 2, false);
+  const shaftOpening = new THREE.Path(); shaftOpening.absarc(0, 0, .085, 0, Math.PI * 2, true); blowerFloor.holes.push(shaftOpening);
+  const blowerPlate = add(motor, new THREE.ExtrudeGeometry(blowerFloor, {depth: .1, bevelEnabled: false, curveSegments: 32}), black, 0, .18, 0);
+  blowerPlate.name = 'cleaner-fixed-blower-plate';
+  blowerPlate.rotation.x = -Math.PI / 2;
+  // One continuous copper path goes from the input contact through the fixed
+  // stator coils to the return contact; there is no bypass around the windings.
+  const windingPoints = [V(.24, -.45, .54), V(.24, -.45, .37)];
+  for (let pole = 0; pole < 6; pole++) {
+    const angle = Math.PI / 3 + pole * Math.PI / 3;
+    const x = Math.sin(angle) * .285, z = Math.cos(angle) * .285;
+    const core = roundedBox(motor, .1, .49, .1, .02, silver, x, -.335, z); core.rotation.y = angle;
+    for (let step = 0; step <= 96; step++) {
+      const phase = step / 96 * Math.PI * 12;
+      windingPoints.push(V(x + Math.cos(phase) * .078, -.57 + step / 96 * .47, z + Math.sin(phase) * .078));
+    }
+    if (pole < 5) {
+      const middle = angle + Math.PI / 6;
+      windingPoints.push(V(Math.sin(middle) * .385, -.065, Math.cos(middle) * .385));
+    }
+  }
+  windingPoints.push(V(.15, -.18, .39), V(-.21, -.4, .4), V(-.24, -.45, .54));
+  const winding = add(motor, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(windingPoints), 960, .014, 6, false), copper);
+  winding.name = 'cleaner-motor-winding';
+  winding.userData.fromTerminal = 'motor-input'; winding.userData.toTerminal = 'motor-return';
   const blowerRim = add(motor, new THREE.TorusGeometry(.68, .095, 10, 64), black, 0, .43, 0);
   blowerRim.rotation.x = Math.PI / 2;
   const impeller = new THREE.Group();
+  impeller.name = 'cleaner-motor-drive-train';
   impeller.position.y = .34;
   impeller.userData.axis = 'y';
   impeller.userData.speed = 24;
+  impeller.userData.drivenBy = 'motor';
   motor.add(impeller); rotors.push(impeller);
-  cylinder(impeller, .18, .14, silver);
+  const armature = cylinder(impeller, .145, .53, black, 0, -.64, 0); armature.name = 'cleaner-motor-rotor';
+  for (let i = 0; i < 6; i++) {
+    const a = i * Math.PI / 3;
+    const bar = roundedBox(impeller, .036, .45, .025, .008, silver, Math.sin(a) * .145, -.64, Math.cos(a) * .145); bar.rotation.y = a;
+  }
+  const driveShaft = cylinder(impeller, .048, 1.02, silver, 0, -.36, 0); driveShaft.name = 'cleaner-motor-shaft';
+  const hub = cylinder(impeller, .18, .14, silver, 0, .02, 0); hub.name = 'cleaner-blower-hub';
+  const backplate = cylinder(impeller, .61, .02, silver, 0, -.03, 0); backplate.name = 'cleaner-impeller-backplate';
   for (let i = 0; i < 9; i++) {
     const a = i * Math.PI * 2 / 9;
-    const vane = roundedBox(impeller, .38, .13, .055, .02, silver, Math.cos(a) * .38, 0, Math.sin(a) * .38);
+    const vane = roundedBox(impeller, .38, .13, .055, .02, silver, Math.cos(a) * .38, .03, Math.sin(a) * .38);
+    vane.name = `cleaner-impeller-vane-${i + 1}`;
     vane.rotation.y = -a - .46;
   }
   roundedBox(motor, .62, .34, .36, .065, black, -.63, .35, 0);
@@ -293,7 +332,7 @@ export function createCleaner() {
     powerIndicator.material.emissiveIntensity = powered ? .7 : 0;
   }
   function animate(_time, dt, on = powered) {
-    if (!on) return;
+    if (!powered || !on) return;
     const step = Math.max(0, Math.min(dt, .1));
     for (const rotor of rotors) {
       const axis = rotor.userData.axis;

@@ -12,3 +12,5 @@ export const deviceIcons={
 };
 export const disassembleIcon=svg('<path d="m24 5 18 9-18 10L6 14 24 5ZM6 23l18 10 18-10M6 33l18 10 18-10"/>');
 export const assembleIcon=svg('<path d="M6 29 24 39l18-10M6 20l18 10 18-10M24 25V5m-7 7 7-7 7 7"/>');
+export const namesIcon=svg('<path d="M6 15l10-8h25v34H16L6 33Z"/><circle cx="12" cy="24" r="2"/><path d="M22 17h12M22 24h12M22 31h8"/>');
+export const namesHiddenIcon=svg('<path d="M6 15l10-8h25v34H16L6 33Z"/><circle cx="12" cy="24" r="2"/><path d="M22 17h12M22 24h12M22 31h8M5 43 43 5"/>');
